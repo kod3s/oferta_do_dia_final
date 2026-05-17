@@ -34,14 +34,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: listener } = auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        loadUser(session.user.id)
-      } else {
-        setProfile(null)
-        setMarket(null)
-      }
-    })
+  const { data: listener } = auth.onAuthStateChange(async (_event, session) => {
+    if (session?.user) {
+      await loadUser(session.user.id)
+    } else {
+      setProfile(null)
+      setMarket(null)
+    }
+  })
 
     return () => listener.subscription.unsubscribe()
   }, [])
