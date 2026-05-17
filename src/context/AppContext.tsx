@@ -5,7 +5,6 @@ import {
   useState,
   ReactNode,
 } from 'react'
-
 import type { Profile, Market } from '../types'
 import { auth, profiles, markets } from '../services/supabase'
 
@@ -21,11 +20,7 @@ interface AppState {
 
 const AppContext = createContext<AppState>({} as AppState)
 
-export function AppProvider({
-  children,
-}: {
-  children: ReactNode
-}) {
+export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
@@ -33,9 +28,7 @@ export function AppProvider({
   async function loadUser(userId: string) {
     try {
       const p = await profiles.get(userId)
-
       setProfile(p)
-
       if (p?.role === 'market') {
         const m = await markets.getMine(userId)
         setMarket(m)
@@ -54,7 +47,6 @@ export function AppProvider({
       if (data.session?.user) {
         await loadUser(data.session.user.id)
       }
-
       setLoading(false)
     })
 
@@ -67,7 +59,6 @@ export function AppProvider({
         setProfile(null)
         setMarket(null)
       }
-
       setLoading(false)
     })
 
@@ -76,46 +67,31 @@ export function AppProvider({
     }
   }, [])
 
-  const signIn = async (
-    email: string,
-    password: string
-  ) => {
-    await auth.signIn(email, password)
+  const signIn = async (email: string, password: string) => {
+    const { error } = await auth.signIn(email, password)
+    if (error) throw new Error(error.message)
   }
 
-  const signUp = async (
-    email: string,
-    password: string
-  ) => {
-    await auth.signUp(email, password)
+  const signUp = async (email: string, password: string) => {
+    const { error } = await auth.signUp(email, password)
+    if (error) throw new Error(error.message)
   }
 
   const signOut = async () => {
     await auth.signOut()
-
     setProfile(null)
     setMarket(null)
   }
 
   const refreshMarket = async () => {
     if (!profile?.id) return
-
     const m = await markets.getMine(profile.id)
-
     setMarket(m)
   }
 
   return (
     <AppContext.Provider
-      value={{
-        profile,
-        market,
-        loading,
-        signIn,
-        signUp,
-        signOut,
-        refreshMarket,
-      }}
+      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}
     >
       {children}
     </AppContext.Provider>
