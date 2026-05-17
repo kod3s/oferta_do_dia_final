@@ -12,22 +12,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export const auth = {
   signUp: async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
+    const { data, error } = await supabase.auth.signUp({ email, password })
 
-    if (error) throw error
-
-    if (data.user) {
+    if (!error && data.user) {
       await supabase.from('profiles').upsert({
         id: data.user.id,
         email: data.user.email,
-        role: 'consumer',
+        role: 'customer',
       })
     }
 
-    return data
+    return { data, error }
   },
 
   signIn: async (email: string, password: string) => {
@@ -35,15 +30,11 @@ export const auth = {
       email,
       password,
     })
-
-    if (error) throw error
-
-    return data
+    return { data, error }
   },
 
   signOut: async () => {
     const { error } = await supabase.auth.signOut()
-
     if (error) throw error
   },
 
@@ -94,7 +85,7 @@ export const profiles = {
 
   setRole: async (
     userId: string,
-    role: 'admin' | 'market' | 'consumer'
+    role: 'admin' | 'market' | 'customer'
   ) => {
     const { error } = await supabase
       .from('profiles')
@@ -226,9 +217,7 @@ export const offers = {
   },
 
   trackView: async (offerId: string) => {
-    await supabase.from('offer_views').insert({
-      offer_id: offerId,
-    })
+    await supabase.from('offer_views').insert({ offer_id: offerId })
   },
 
   listAll: async () => {
@@ -266,33 +255,19 @@ export const savedOffers = {
       .maybeSingle()
 
     if (existing) {
-      await supabase
-        .from('saved_offers')
-        .delete()
-        .eq('id', existing.id)
-
+      await supabase.from('saved_offers').delete().eq('id', existing.id)
       return false
     } else {
-      await supabase.from('saved_offers').insert({
-        offer_id: offerId,
-        user_id: userId,
-      })
-
+      await supabase.from('saved_offers').insert({ offer_id: offerId, user_id: userId })
       return true
     }
   },
 
   setChecked: async (savedId: string, checked: boolean) => {
-    await supabase
-      .from('saved_offers')
-      .update({ checked })
-      .eq('id', savedId)
+    await supabase.from('saved_offers').update({ checked }).eq('id', savedId)
   },
 
   clear: async (userId: string) => {
-    await supabase
-      .from('saved_offers')
-      .delete()
-      .eq('user_id', userId)
+    await supabase.from('saved_offers').delete().eq('user_id', userId)
   },
 }
