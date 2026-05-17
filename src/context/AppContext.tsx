@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react'
 import type { Profile, Market } from '../types'
 import { auth, profiles, markets } from '../services/supabase'
 
@@ -18,6 +18,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
+  const initialized = useRef(false)
 
   async function loadUser(userId: string) {
     try {
@@ -29,23 +30,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         setMarket(null)
       }
-    } catch (error) {
-      console.error('Erro ao carregar usuário:', error)
+    } catch (err) {
+      console.error('Erro ao carregar usuário:', err)
       setProfile(null)
       setMarket(null)
     }
   }
 
   useEffect(() => {
-    auth.getSession().then(async ({ data }) => {
-      if (data.session?.user) await loadUser(data.session.user.id)
-      setLoading(false)
-    })
+    // Só o onAuthStateChange controla o loading
+    // O INITIAL_SESSION é disparado automaticamente na inicialização
+    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        // Primeira chamada: inicializa o estado
+        if (session?.user) {
+          await loadUser(session.user.id)
+        }
+        setLoading(false)
+        initialized.current = true
+        return
+      }
 
-    const { data: { subscription } } = auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) await loadUser(session.user.id)
-      else { setProfile(null); setMarket(null) }
-      setLoading(false)
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadUser(session.user.id)
+      }
+
+      if (event === 'SIGNED_OUT') {
+        setProfile(null)
+        setMarket(null)
+      }
+
+      if (event === 'TOKEN_REFRESHED' && session?.user && !initialized.current) {
+        await loadUser(session.user.id)
+      }
     })
 
     return () => subscription.unsubscribe()
@@ -56,7 +73,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message)
   }
 
-  const signUp = async (email: string, password: string, role: 'customer' | 'market' = 'customer') => {
+  const signUp = async (
+    email: string,
+    password: string,
+    role: 'customer' | 'market' = 'customer'
+  ) => {
     const { error } = await auth.signUp(email, password, role)
     if (error) throw new Error(error.message)
   }
@@ -74,7 +95,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppContext.Provider value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}>
+    <AppContext.Provider
+      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}
+    >
       {children}
     </AppContext.Provider>
   )
