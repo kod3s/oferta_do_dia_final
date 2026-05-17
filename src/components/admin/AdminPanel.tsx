@@ -32,15 +32,18 @@ export function AdminPanel() {
     setTimeout(() => setMsg(''), 3000)
   }
 
-  async function setRole(userId: string, role: 'admin' | 'market' | 'consumer') {
+  async function setRole(userId: string, role: 'admin' | 'market' | 'customer') {
     await profilesService.setRole(userId, role)
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
+    // Recarrega lista completa para refletir mudança
+    const updated = await profilesService.list()
+    setUsers(updated)
     flash(`Papel atualizado para ${role}`)
   }
 
   async function setPlan(userId: string, plan: 'free' | 'pro') {
     await profilesService.setMarketPlan(userId, plan)
-    setAllMarkets(prev => prev.map(m => m.user_id === userId ? { ...m, plan } : m))
+    const updated = await marketsService.list()
+    setAllMarkets(updated)
     flash(`Plano atualizado para ${plan}`)
   }
 
@@ -53,10 +56,17 @@ export function AdminPanel() {
   const proMarkets = allMarkets.filter(m => m.plan === 'pro').length
   const activeMarkets = allMarkets.filter(m => m.active).length
   const totalOffers = allOffers.length
-  const activeOffers = allOffers.filter((o: any) => o.active && (!o.valid_until || o.valid_until >= new Date().toISOString().split('T')[0])).length
+  const activeOffers = allOffers.filter((o: any) =>
+    o.active && (!o.valid_until || o.valid_until >= new Date().toISOString().split('T')[0])
+  ).length
 
   const nav = (s: Section, label: string, icon: string) => (
-    <button onClick={() => setSection(s)} className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg w-full text-left transition-colors ${section === s ? 'bg-red-50 text-red-700 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>
+    <button
+      onClick={() => setSection(s)}
+      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg w-full text-left transition-colors ${
+        section === s ? 'bg-red-50 text-red-700 font-medium' : 'text-gray-500 hover:bg-gray-50'
+      }`}
+    >
       <span>{icon}</span>{label}
     </button>
   )
@@ -128,12 +138,17 @@ export function AdminPanel() {
         {/* USERS */}
         {section === 'users' && !loading && (
           <div>
-            <h1 className="text-lg font-medium mb-6">Usuários ({users.length})</h1>
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-lg font-medium">Usuários ({users.length})</h1>
+              <button onClick={loadAll} className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 px-3 py-1.5 rounded-lg">
+                ↻ Atualizar
+              </button>
+            </div>
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <table className="w-full">
                 <thead>
                   <tr className="text-xs text-gray-400 border-b border-gray-50">
-                    {['E-mail', 'Papel', 'Cadastrado em', 'Ações'].map(h => (
+                    {['E-mail', 'Papel atual', 'Cadastrado em', 'Alterar papel'].map(h => (
                       <th key={h} className="text-left px-5 py-3 font-normal">{h}</th>
                     ))}
                   </tr>
@@ -157,10 +172,10 @@ export function AdminPanel() {
                       <td className="px-5 py-3">
                         <select
                           value={u.role}
-                          onChange={e => setRole(u.id, e.target.value as any)}
+                          onChange={e => setRole(u.id, e.target.value as 'admin' | 'market' | 'customer')}
                           className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none"
                         >
-                          <option value="consumer">consumer</option>
+                          <option value="customer">customer</option>
                           <option value="market">market</option>
                           <option value="admin">admin</option>
                         </select>
@@ -192,18 +207,21 @@ export function AdminPanel() {
                       <td className="px-5 py-3 text-sm font-medium">{m.name}</td>
                       <td className="px-5 py-3 text-sm text-gray-500">{m.city ?? '—'}</td>
                       <td className="px-5 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.plan === 'pro' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          m.plan === 'pro' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                        }`}>
                           {m.plan}
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-500'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          m.active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-500'
+                        }`}>
                           {m.active ? 'ativo' : 'inativo'}
                         </span>
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex gap-3 items-center">
-                          {/* Alternar plano manualmente */}
                           <select
                             value={m.plan}
                             onChange={e => setPlan(m.user_id, e.target.value as 'free' | 'pro')}
@@ -214,7 +232,11 @@ export function AdminPanel() {
                           </select>
                           <button
                             onClick={() => toggleMarket(m.id, !m.active)}
-                            className={`text-xs px-2 py-1 rounded border transition-colors ${m.active ? 'border-red-200 text-red-400 hover:bg-red-50' : 'border-emerald-200 text-emerald-500 hover:bg-emerald-50'}`}
+                            className={`text-xs px-2 py-1 rounded border transition-colors ${
+                              m.active
+                                ? 'border-red-200 text-red-400 hover:bg-red-50'
+                                : 'border-emerald-200 text-emerald-500 hover:bg-emerald-50'
+                            }`}
                           >
                             {m.active ? 'Desativar' : 'Ativar'}
                           </button>
@@ -224,7 +246,9 @@ export function AdminPanel() {
                   ))}
                 </tbody>
               </table>
-              {allMarkets.length === 0 && <p className="text-sm text-gray-400 text-center py-10">Nenhum mercado cadastrado ainda.</p>}
+              {allMarkets.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-10">Nenhum mercado cadastrado ainda.</p>
+              )}
             </div>
           </div>
         )}
@@ -237,7 +261,7 @@ export function AdminPanel() {
               <table className="w-full">
                 <thead>
                   <tr className="text-xs text-gray-400 border-b border-gray-50">
-                    {['Produto', 'Mercado', 'Preço', 'Validade', 'Views', 'Salvos', 'Status'].map(h => (
+                    {['Produto', 'Mercado', 'Preço', 'Validade', 'Status'].map(h => (
                       <th key={h} className="text-left px-4 py-3 font-normal">{h}</th>
                     ))}
                   </tr>
@@ -249,12 +273,14 @@ export function AdminPanel() {
                       <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm">{o.emoji} {o.name}</td>
                         <td className="px-4 py-3 text-xs text-gray-500">{o.markets?.name ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-emerald-700">R$ {o.price.toFixed(2).replace('.', ',')}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-emerald-700">
+                          R$ {Number(o.price).toFixed(2).replace('.', ',')}
+                        </td>
                         <td className="px-4 py-3 text-xs text-gray-400">{o.valid_until ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm">{o.views}</td>
-                        <td className="px-4 py-3 text-sm">{o.saves}</td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${expired ? 'bg-gray-100 text-gray-400' : 'bg-emerald-100 text-emerald-700'}`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            expired ? 'bg-gray-100 text-gray-400' : 'bg-emerald-100 text-emerald-700'
+                          }`}>
                             {expired ? 'expirada' : 'ativa'}
                           </span>
                         </td>
@@ -263,7 +289,9 @@ export function AdminPanel() {
                   })}
                 </tbody>
               </table>
-              {allOffers.length === 0 && <p className="text-sm text-gray-400 text-center py-10">Nenhuma oferta encontrada.</p>}
+              {allOffers.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-10">Nenhuma oferta encontrada.</p>
+              )}
             </div>
           </div>
         )}
