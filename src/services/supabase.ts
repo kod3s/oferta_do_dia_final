@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import { createClient } from '@supabase/supabase-js'
 import type { Market, Offer, SavedOffer, Profile } from '../types'
 
