@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import type { Profile, Market } from '../types'
 import { auth, profiles, markets } from '../services/supabase'
 
@@ -13,7 +7,7 @@ interface AppState {
   market: Market | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string, role?: 'customer' | 'market') => Promise<void>
   signOut: () => Promise<void>
   refreshMarket: () => Promise<void>
 }
@@ -44,27 +38,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     auth.getSession().then(async ({ data }) => {
-      if (data.session?.user) {
-        await loadUser(data.session.user.id)
-      }
+      if (data.session?.user) await loadUser(data.session.user.id)
       setLoading(false)
     })
 
-    const {
-      data: { subscription },
-    } = auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await loadUser(session.user.id)
-      } else {
-        setProfile(null)
-        setMarket(null)
-      }
+    const { data: { subscription } } = auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) await loadUser(session.user.id)
+      else { setProfile(null); setMarket(null) }
       setLoading(false)
     })
 
-    return () => {
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   const signIn = async (email: string, password: string) => {
@@ -72,8 +56,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message)
   }
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await auth.signUp(email, password)
+  const signUp = async (email: string, password: string, role: 'customer' | 'market' = 'customer') => {
+    const { error } = await auth.signUp(email, password, role)
     if (error) throw new Error(error.message)
   }
 
@@ -90,9 +74,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AppContext.Provider
-      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}
-    >
+    <AppContext.Provider value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}>
       {children}
     </AppContext.Provider>
   )
