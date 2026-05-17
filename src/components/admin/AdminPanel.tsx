@@ -32,7 +32,7 @@ export function AdminPanel() {
     setTimeout(() => setMsg(''), 3000)
   }
 
-  async function setRole(userId: string, role: 'admin' | 'market' | 'customer') {
+  async function setRole(userId: string, role: 'admin' | 'market' | 'consumer') {
     await profilesService.setRole(userId, role)
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
     flash(`Papel atualizado para ${role}`)
@@ -160,7 +160,7 @@ export function AdminPanel() {
                           onChange={e => setRole(u.id, e.target.value as any)}
                           className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none"
                         >
-                          <option value="customer">customer</option>
+                          <option value="consumer">consumer</option>
                           <option value="market">market</option>
                           <option value="admin">admin</option>
                         </select>
