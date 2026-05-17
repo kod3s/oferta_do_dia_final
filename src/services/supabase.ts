@@ -12,7 +12,21 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export const auth = {
   signUp: (email: string, password: string) =>
-    supabase.auth.signUp({ email, password }),
+  supabase.auth.signUp({ email, password }),
+  const { data, error } = await supabase.auth.signUp({
+  email,
+  password,
+  })
+  
+  if (error) throw error
+  
+  if (data.user) {
+  await supabase.from('profiles').insert({
+  id: data.user.id,
+  email: data.user.email,
+  role: 'consumer',
+  })
+  }
 
   signIn: (email: string, password: string) =>
     supabase.auth.signInWithPassword({ email, password }),
