@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import type { Profile, Market } from '../types'
 import { auth, profiles, markets } from '../services/supabase'
 
@@ -18,7 +18,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
-  const initialized = useRef(false)
 
   async function loadUser(userId: string) {
     try {
@@ -38,34 +37,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Só o onAuthStateChange controla o loading
-    // O INITIAL_SESSION é disparado automaticamente na inicialização
-    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
-      if (event === 'INITIAL_SESSION') {
-        // Primeira chamada: inicializa o estado
-        if (session?.user) {
-          await loadUser(session.user.id)
-        }
-        setLoading(false)
-        initialized.current = true
-        return
-      }
+    // Timeout de segurança: se demorar mais de 5s, libera a tela
+    const timeout = setTimeout(() => setLoading(false), 5000)
 
+    auth.getSession().then(async ({ data }) => {
+      try {
+        if (data.session?.user) {
+          await loadUser(data.session.user.id)
+        }
+      } finally {
+        clearTimeout(timeout)
+        setLoading(false)
+      }
+    })
+
+    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         await loadUser(session.user.id)
       }
-
       if (event === 'SIGNED_OUT') {
         setProfile(null)
         setMarket(null)
       }
-
-      if (event === 'TOKEN_REFRESHED' && session?.user && !initialized.current) {
-        await loadUser(session.user.id)
-      }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signIn = async (email: string, password: string) => {
