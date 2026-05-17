@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { useApp } from '../../context/AppContext'
+import { markets as marketsService } from '../../services/supabase'
 
 export function AuthPage() {
-  const { signIn, signUp } = useApp()
+  const { signIn, signUp, profile, refreshMarket } = useApp()
   const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [accountType, setAccountType] = useState<'customer' | 'market'>('customer')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [marketName, setMarketName] = useState('')
+  const [marketCity, setMarketCity] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -13,13 +17,23 @@ export function AuthPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+
+    if (mode === 'register' && accountType === 'market' && !marketName.trim()) {
+      setError('Informe o nome do mercado.')
+      return
+    }
+
     setLoading(true)
     try {
       if (mode === 'login') {
         await signIn(email, password)
       } else {
-        await signUp(email, password)
-        setSuccess(true)
+        await signUp(email, password, accountType)
+        if (accountType === 'market') {
+          setSuccess(true)
+        } else {
+          setSuccess(true)
+        }
       }
     } catch (err: any) {
       setError(err.message ?? 'Erro inesperado. Tente novamente.')
@@ -34,8 +48,14 @@ export function AuthPage() {
         <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-sm border border-gray-100">
           <div className="text-4xl mb-4">📬</div>
           <h2 className="text-lg font-medium mb-2">Verifique seu e-mail</h2>
-          <p className="text-sm text-gray-500">Enviamos um link de confirmação para <strong>{email}</strong>. Clique no link para ativar sua conta.</p>
-          <button onClick={() => { setSuccess(false); setMode('login') }} className="mt-6 text-sm text-emerald-600 hover:underline">
+          <p className="text-sm text-gray-500">
+            Enviamos um link de confirmação para <strong>{email}</strong>.
+            Clique no link para ativar sua conta.
+          </p>
+          <button
+            onClick={() => { setSuccess(false); setMode('login') }}
+            className="mt-6 text-sm text-emerald-600 hover:underline"
+          >
             Voltar para o login
           </button>
         </div>
@@ -55,8 +75,42 @@ export function AuthPage() {
           {mode === 'login' ? 'Entrar na conta' : 'Criar conta'}
         </h1>
         <p className="text-sm text-gray-500 mb-6">
-          {mode === 'login' ? 'Acesse o painel do seu mercado ou lista de compras.' : 'Registre seu mercado ou crie uma conta de consumidor.'}
+          {mode === 'login'
+            ? 'Acesse o painel do seu mercado ou lista de compras.'
+            : 'Escolha o tipo de conta para começar.'}
         </p>
+
+        {/* Seletor de tipo — só no cadastro */}
+        {mode === 'register' && (
+          <div className="grid grid-cols-2 gap-2 mb-6">
+            <button
+              type="button"
+              onClick={() => setAccountType('customer')}
+              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-sm transition-colors ${
+                accountType === 'customer'
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-medium'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              <span className="text-2xl">🛒</span>
+              Consumidor
+              <span className="text-xs font-normal text-gray-400">Buscar ofertas</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAccountType('market')}
+              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-sm transition-colors ${
+                accountType === 'market'
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-medium'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              <span className="text-2xl">🏪</span>
+              Mercado
+              <span className="text-xs font-normal text-gray-400">Publicar ofertas</span>
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
@@ -83,20 +137,58 @@ export function AuthPage() {
             />
           </div>
 
-          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          {/* Campos extras para mercado */}
+          {mode === 'register' && accountType === 'market' && (
+            <>
+              <div>
+                <label className="text-xs text-gray-500 font-medium block mb-1">Nome do mercado *</label>
+                <input
+                  type="text"
+                  value={marketName}
+                  onChange={e => setMarketName(e.target.value)}
+                  required
+                  placeholder="Ex: Supermercado Central"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-medium block mb-1">Cidade</label>
+                <input
+                  type="text"
+                  value={marketCity}
+                  onChange={e => setMarketCity(e.target.value)}
+                  placeholder="Ex: São Paulo"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+            </>
+          )}
+
+          {error && (
+            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
 
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-emerald-500 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-emerald-600 disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+            {loading
+              ? 'Aguarde...'
+              : mode === 'login'
+              ? 'Entrar'
+              : accountType === 'market'
+              ? 'Criar conta do mercado'
+              : 'Criar conta'}
           </button>
         </form>
 
         <p className="text-center text-sm text-gray-500 mt-6">
           {mode === 'login' ? 'Não tem conta?' : 'Já tem conta?'}{' '}
-          <button onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }} className="text-emerald-600 hover:underline font-medium">
+          <button
+            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}
+            className="text-emerald-600 hover:underline font-medium"
+          >
             {mode === 'login' ? 'Criar conta' : 'Entrar'}
           </button>
         </p>
