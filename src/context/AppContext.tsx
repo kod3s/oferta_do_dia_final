@@ -36,36 +36,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  useEffect(() => {
-    // Timeout de segurança: se demorar mais de 5s, libera a tela
-    const timeout = setTimeout(() => setLoading(false), 5000)
+ useEffect(() => {
+  const init = async () => {
+    try {
+      const { data } = await auth.getSession()
 
-    auth.getSession().then(async ({ data }) => {
+      if (data.session?.user) {
+        await loadUser(data.session.user.id)
+      }
+    } catch (err) {
+      console.error('Erro ao carregar sessão:', err)
+
+      // limpa sessão quebrada
+      await auth.signOut()
+
+      setProfile(null)
+      setMarket(null)
+
+      localStorage.clear()
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  init()
+
+  const { data: listener } = auth.onAuthStateChange(
+    async (_event, session) => {
       try {
-        if (data.session?.user) {
-          await loadUser(data.session.user.id)
+        if (session?.user) {
+          await loadUser(session.user.id)
+        } else {
+          setProfile(null)
+          setMarket(null)
         }
-      } finally {
-        clearTimeout(timeout)
-        setLoading(false)
-      }
-    })
+      } catch (err) {
+        console.error('Erro auth state:', err)
 
-    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        await loadUser(session.user.id)
-      }
-      if (event === 'SIGNED_OUT') {
+        await auth.signOut()
+
         setProfile(null)
         setMarket(null)
-      }
-    })
 
-    return () => {
-      clearTimeout(timeout)
-      subscription.unsubscribe()
+        localStorage.clear()
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [])
+  )
+
+  return () => listener.subscription.unsubscribe()
+}, [])
 
   const signIn = async (email: string, password: string) => {
     const { error } = await auth.signIn(email, password)
