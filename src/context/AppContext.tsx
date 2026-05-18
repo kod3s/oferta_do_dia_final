@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode
+} from 'react'
+
 import type { Profile, Market } from '../types'
 import { auth, profiles, markets } from '../services/supabase'
 
@@ -7,14 +14,18 @@ interface AppState {
   market: Market | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, role?: 'customer' | 'market') => Promise<void>
+  signUp: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   refreshMarket: () => Promise<void>
 }
 
 const AppContext = createContext<AppState>({} as AppState)
 
-export function AppProvider({ children }: { children: ReactNode }) {
+export function AppProvider({
+  children
+}: {
+  children: ReactNode
+}) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
@@ -22,47 +33,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function loadUser(userId: string) {
     try {
       const p = await profiles.get(userId)
+
+      if (!p) {
+        setProfile(null)
+        setMarket(null)
+        return
+      }
+
       setProfile(p)
-      if (p?.role === 'market') {
+
+      if (p.role === 'market') {
         const m = await markets.getMine(userId)
         setMarket(m)
       } else {
         setMarket(null)
       }
+
     } catch (err) {
-      console.error('Erro ao carregar usuário:', err)
+      console.error('Erro loadUser:', err)
+
       setProfile(null)
       setMarket(null)
     }
   }
 
- useEffect(() => {
-  const init = async () => {
-    try {
-      const { data } = await auth.getSession()
+  useEffect(() => {
+    let mounted = true
 
-      if (data.session?.user) {
-        await loadUser(data.session.user.id)
+    async function init() {
+      try {
+        const { data } = await auth.getSession()
+
+        if (!mounted) return
+
+        if (data.session?.user) {
+          await loadUser(data.session.user.id)
+        }
+
+      } catch (err) {
+        console.error('Erro sessão:', err)
+      } finally {
+        if (mounted) {
+          setLoading(false)
+        }
       }
-    } catch (err) {
-      console.error('Erro ao carregar sessão:', err)
-
-      // limpa sessão quebrada
-      await auth.signOut()
-
-      setProfile(null)
-      setMarket(null)
-
-      localStorage.clear()
-    } finally {
-      setLoading(false)
     }
-  }
 
-  init()
+    init()
 
-  const { data: listener } = auth.onAuthStateChange(
-    async (_event, session) => {
+    const {
+      data: { subscription }
+    } = auth.onAuthStateChange(async (_event, session) => {
+
       try {
         if (session?.user) {
           await loadUser(session.user.id)
@@ -71,52 +93,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMarket(null)
         }
       } catch (err) {
-        console.error('Erro auth state:', err)
-
-        await auth.signOut()
-
-        setProfile(null)
-        setMarket(null)
-
-        localStorage.clear()
+        console.error(err)
       } finally {
         setLoading(false)
       }
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
     }
-  )
+  }, [])
 
-  return () => listener.subscription.unsubscribe()
-}, [])
+  const signIn = async (
+    email: string,
+    password: string
+  ) => {
+    const response = await auth.signIn(email, password)
 
-  const signIn = async (email: string, password: string) => {
-    const { error } = await auth.signIn(email, password)
-    if (error) throw new Error(error.message)
+    if (response.error) {
+      throw response.error
+    }
   }
 
   const signUp = async (
     email: string,
-    password: string,
-    role: 'customer' | 'market' = 'customer'
+    password: string
   ) => {
-    const { error } = await auth.signUp(email, password, role)
-    if (error) throw new Error(error.message)
+    const response = await auth.signUp(email, password)
+
+    if (response.error) {
+      throw response.error
+    }
   }
 
   const signOut = async () => {
     await auth.signOut()
+
     setProfile(null)
     setMarket(null)
   }
 
   const refreshMarket = async () => {
     if (!profile?.id) return
-    const m = await markets.getMine(profile.id)
-    setMarket(m)
+
+    try {
+      const m = await markets.getMine(profile.id)
+      setMarket(m)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   return (
     <AppContext.Provider
-      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}
+      value={{
+        profile,
+        market,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        refreshMarket
+      }}
     >
       {children}
     </AppContext.Provider>
