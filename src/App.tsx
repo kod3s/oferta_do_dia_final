@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { AppProvider, useApp } from './context/AppContext'
 import { Navbar } from './components/shared/Navbar'
 import { AuthPage } from './components/shared/AuthPage'
@@ -7,6 +7,8 @@ import { OffersPage } from './components/consumer/OffersPage'
 import { MarketDashboard } from './components/market/MarketDashboard'
 import { AdminPanel } from './components/admin/AdminPanel'
 import { markets as marketsService } from './services/supabase'
+
+type Page = 'home' | 'offers' | 'dashboard' | 'admin' | 'auth'
 
 function OnboardingMarket({ onDone }: { onDone: () => void }) {
   const { profile, refreshMarket } = useApp()
@@ -33,9 +35,9 @@ function OnboardingMarket({ onDone }: { onDone: () => void }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-sm border border-gray-100">
-        <div className="text-3xl mb-4">🏪</div>
-        <h1 className="text-lg font-medium mb-1">Configure seu mercado</h1>
-        <p className="text-sm text-gray-400 mb-6">Você pode editar essas informações depois.</p>
+        <img src="/ofertalogo.png" alt="Oferta do Dia" className="w-16 h-16 mx-auto mb-4 rounded-2xl" />
+        <h1 className="text-lg font-medium mb-1 text-center">Configure seu mercado</h1>
+        <p className="text-sm text-gray-400 mb-6 text-center">Você pode editar essas informações depois.</p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
             <label className="text-xs font-medium text-gray-500 block mb-1">Nome do estabelecimento *</label>
@@ -72,45 +74,63 @@ function OnboardingMarket({ onDone }: { onDone: () => void }) {
 
 function AppInner() {
   const { profile, market, loading } = useApp()
-  const [page, setPage] = useState('home')
+  const [page, setPage] = useState<Page>('home')
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [visible, setVisible] = useState(true)
+  const prevPage = useRef<Page>('home')
+
+  // Navegação com fade
+  function navigate(p: Page) {
+    if (p === page) return
+    setVisible(false)
+    setTimeout(() => {
+      prevPage.current = page
+      setPage(p)
+      setVisible(true)
+    }, 150)
+  }
 
   useEffect(() => {
-    if (!profile) return
+    if (!profile) {
+      // Deslogou — volta para home
+      if (page === 'dashboard' || page === 'admin') navigate('home')
+      return
+    }
     if (profile.role === 'admin') {
-      setPage('admin')
+      navigate('admin')
     } else if (profile.role === 'market') {
       if (!market) setShowOnboarding(true)
-      else { setShowOnboarding(false); setPage('dashboard') }
+      else { setShowOnboarding(false); navigate('dashboard') }
     }
   }, [profile, market])
 
-  // Tela de loading com timeout visual de segurança
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-gray-50">
+        <img src="/ofertalogo.png" alt="Oferta do Dia" className="w-16 h-16 rounded-2xl animate-pulse" />
         <p className="text-sm text-gray-400">Carregando...</p>
       </div>
     )
   }
 
-  if (page === 'auth' && !profile) {
-    return <AuthPage />
-  }
+  if (page === 'auth' && !profile) return <AuthPage />
 
   if (showOnboarding && profile?.role === 'market' && !market) {
-    return <OnboardingMarket onDone={() => { setShowOnboarding(false); setPage('dashboard') }} />
+    return <OnboardingMarket onDone={() => { setShowOnboarding(false); navigate('dashboard') }} />
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar page={page} setPage={setPage} />
-      {page === 'home' && <HomePage setPage={setPage} />}
-      {page === 'offers' && <OffersPage setPage={setPage} />}
-      {page === 'dashboard' && profile?.role === 'market' && <MarketDashboard />}
-      {page === 'admin' && profile?.role === 'admin' && <AdminPanel />}
-      {page === 'auth' && profile && <HomePage setPage={setPage} />}
+      <Navbar page={page} setPage={navigate} />
+      <div
+        className="transition-opacity duration-150"
+        style={{ opacity: visible ? 1 : 0 }}
+      >
+        {page === 'home' && <HomePage setPage={navigate} />}
+        {page === 'offers' && <OffersPage setPage={navigate} />}
+        {page === 'dashboard' && profile?.role === 'market' && <MarketDashboard />}
+        {page === 'admin' && profile?.role === 'admin' && <AdminPanel />}
+      </div>
     </div>
   )
 }
