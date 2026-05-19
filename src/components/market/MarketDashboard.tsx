@@ -6,6 +6,19 @@ import type { OfferStats, Market } from '../../types'
 
 type Section = 'dashboard' | 'offers' | 'new' | 'profile'
 
+function ProductImage({ src, name }: { src?: string; name: string }) {
+  const [error, setError] = useState(false)
+  if (!src || error) return <span className="text-xl">🏷️</span>
+  return (
+    <img
+      src={src}
+      alt={name}
+      className="w-8 h-8 object-cover rounded"
+      onError={() => setError(true)}
+    />
+  )
+}
+
 export function MarketDashboard() {
   const { profile, market, refreshMarket } = useApp()
   const [section, setSection] = useState<Section>('dashboard')
@@ -16,18 +29,21 @@ export function MarketDashboard() {
   const [msg, setMsg] = useState('')
 
   const FREE_LIMIT = 5
-  const activeOffers = offerList.filter(o => o.active && (!o.valid_until || o.valid_until >= new Date().toISOString().split('T')[0]))
+  const activeOffers = offerList.filter(o =>
+    o.active && (!o.valid_until || o.valid_until >= new Date().toISOString().split('T')[0])
+  )
   const isPro = market?.plan === 'pro'
   const canAdd = isPro || activeOffers.length < FREE_LIMIT
 
   useEffect(() => {
-    if (market?.id) {
-      offersService.listByMarket(market.id).then(setOfferList)
-    }
+    if (market?.id) offersService.listByMarket(market.id).then(setOfferList)
   }, [market?.id])
 
   useEffect(() => {
-    if (market) setProfileForm({ name: market.name, cnpj: market.cnpj, address: market.address, city: market.city, phone: market.phone, description: market.description })
+    if (market) setProfileForm({
+      name: market.name, cnpj: market.cnpj, address: market.address,
+      city: market.city, phone: market.phone, description: market.description,
+    })
   }, [market])
 
   async function handleCreateOffer(data: any) {
@@ -67,14 +83,16 @@ export function MarketDashboard() {
   const totalSaves = offerList.reduce((s, o) => s + (o.saves ?? 0), 0)
 
   const nav = (s: Section, label: string, icon: string) => (
-    <button onClick={() => { setSection(s); setEditing(null) }} className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg w-full text-left transition-colors ${section === s ? 'bg-gray-100 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}>
+    <button
+      onClick={() => { setSection(s); setEditing(null) }}
+      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg w-full text-left transition-colors ${section === s ? 'bg-gray-100 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+    >
       <span>{icon}</span>{label}
     </button>
   )
 
   return (
     <div className="flex min-h-[calc(100vh-48px)]">
-      {/* Sidebar */}
       <div className="w-52 flex-shrink-0 bg-white border-r border-gray-100 p-3 flex flex-col gap-1">
         <p className="text-xs text-gray-400 px-3 py-1 mt-1 uppercase tracking-wide">Principal</p>
         {nav('dashboard', 'Dashboard', '📊')}
@@ -88,21 +106,24 @@ export function MarketDashboard() {
           {!isPro && <p className="text-emerald-700 mt-0.5">{activeOffers.length}/{FREE_LIMIT} ofertas</p>}
           {!isPro && (
             <p className="text-emerald-600 mt-2 leading-tight">
-              Para liberar ofertas ilimitadas, entre em contato com o suporte.
+              Para liberar ilimitado, entre em contato com o suporte.
             </p>
           )}
         </div>
       </div>
 
-      {/* Main */}
       <div className="flex-1 p-6 overflow-auto">
+        {msg && (
+          <div className="fixed top-16 right-4 bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
+            {msg}
+          </div>
+        )}
 
         {/* DASHBOARD */}
         {section === 'dashboard' && (
           <div>
             <h1 className="text-lg font-medium mb-1">{market?.name ?? 'Meu mercado'}</h1>
             <p className="text-sm text-gray-400 mb-6">Visão geral do desempenho</p>
-
             <div className="grid grid-cols-3 gap-4 mb-6">
               {[
                 { label: 'Ofertas ativas', val: activeOffers.length },
@@ -115,22 +136,35 @@ export function MarketDashboard() {
                 </div>
               ))}
             </div>
-
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
                 <span className="text-sm font-medium">Ofertas ativas</span>
                 <button onClick={() => setSection('new')} className="text-xs text-emerald-600 hover:underline">+ Nova oferta</button>
               </div>
               {activeOffers.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-10">Nenhuma oferta ativa. <button onClick={() => setSection('new')} className="text-emerald-600 hover:underline">Criar primeira oferta</button></p>
+                <p className="text-sm text-gray-400 text-center py-10">
+                  Nenhuma oferta ativa.{' '}
+                  <button onClick={() => setSection('new')} className="text-emerald-600 hover:underline">Criar primeira oferta</button>
+                </p>
               ) : (
                 <table className="w-full">
-                  <thead><tr className="text-xs text-gray-400 border-b border-gray-50">{['Produto','Preço','Validade','Views','Salvos'].map(h => <th key={h} className="text-left px-5 py-3 font-normal">{h}</th>)}</tr></thead>
+                  <thead>
+                    <tr className="text-xs text-gray-400 border-b border-gray-50">
+                      {['Produto', 'Preço', 'Validade', 'Views', 'Salvos'].map(h => (
+                        <th key={h} className="text-left px-5 py-3 font-normal">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
                   <tbody>
                     {activeOffers.slice(0, 5).map(o => (
                       <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                        <td className="px-5 py-3 text-sm">{o.emoji} {o.name}</td>
-                        <td className="px-5 py-3 text-sm font-medium text-emerald-700">R$ {o.price.toFixed(2).replace('.', ',')}</td>
+                        <td className="px-5 py-3 text-sm flex items-center gap-2">
+                          <ProductImage src={o.image_url} name={o.name} />
+                          {o.name}
+                        </td>
+                        <td className="px-5 py-3 text-sm font-medium text-emerald-700">
+                          R$ {o.price.toFixed(2).replace('.', ',')}
+                        </td>
                         <td className="px-5 py-3 text-xs text-gray-400">{o.valid_until ?? '—'}</td>
                         <td className="px-5 py-3 text-sm">{o.views}</td>
                         <td className="px-5 py-3 text-sm">{o.saves}</td>
@@ -149,7 +183,7 @@ export function MarketDashboard() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h1 className="text-lg font-medium">Minhas ofertas</h1>
-                {!isPro && <p className="text-xs text-gray-400">{activeOffers.length} de {FREE_LIMIT} ativas (plano grátis)</p>}
+                {!isPro && <p className="text-xs text-gray-400">{activeOffers.length} de {FREE_LIMIT} ativas</p>}
               </div>
               <button
                 onClick={() => canAdd ? setSection('new') : null}
@@ -162,7 +196,7 @@ export function MarketDashboard() {
 
             {!canAdd && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-800">
-                Você atingiu o limite de {FREE_LIMIT} ofertas do plano grátis. Entre em contato para ativar o plano Pro.
+                Limite de {FREE_LIMIT} ofertas atingido. Entre em contato para ativar o plano Pro.
               </div>
             )}
 
@@ -175,14 +209,27 @@ export function MarketDashboard() {
 
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <table className="w-full">
-                <thead><tr className="text-xs text-gray-400 border-b border-gray-50">{['Produto','Preço','Validade','Views','Salvos','Status',''].map(h => <th key={h} className="text-left px-4 py-3 font-normal">{h}</th>)}</tr></thead>
+                <thead>
+                  <tr className="text-xs text-gray-400 border-b border-gray-50">
+                    {['Produto', 'Preço', 'Validade', 'Views', 'Salvos', 'Status', ''].map(h => (
+                      <th key={h} className="text-left px-4 py-3 font-normal">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
                 <tbody>
                   {offerList.map(o => {
                     const expired = o.valid_until && o.valid_until < new Date().toISOString().split('T')[0]
                     return (
                       <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm">{o.emoji} {o.name}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-emerald-700">R$ {o.price.toFixed(2).replace('.', ',')}/{o.unit}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <div className="flex items-center gap-2">
+                            <ProductImage src={o.image_url} name={o.name} />
+                            {o.name}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-emerald-700">
+                          R$ {o.price.toFixed(2).replace('.', ',')}/{o.unit}
+                        </td>
                         <td className="px-4 py-3 text-xs text-gray-400">{o.valid_until ?? '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{o.views}</td>
                         <td className="px-4 py-3 text-sm text-gray-500">{o.saves}</td>
@@ -202,7 +249,9 @@ export function MarketDashboard() {
                   })}
                 </tbody>
               </table>
-              {offerList.length === 0 && <p className="text-sm text-gray-400 text-center py-10">Nenhuma oferta cadastrada ainda.</p>}
+              {offerList.length === 0 && (
+                <p className="text-sm text-gray-400 text-center py-10">Nenhuma oferta cadastrada ainda.</p>
+              )}
             </div>
           </div>
         )}
@@ -251,7 +300,11 @@ export function MarketDashboard() {
                   />
                 </div>
                 <div className="col-span-2 flex justify-end">
-                  <button onClick={handleSaveProfile} disabled={saving} className="px-5 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 font-medium transition-colors">
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={saving}
+                    className="px-5 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 font-medium transition-colors"
+                  >
                     {saving ? 'Salvando...' : 'Salvar alterações'}
                   </button>
                 </div>
