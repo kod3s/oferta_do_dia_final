@@ -28,7 +28,7 @@ export interface Offer {
   id: string
   market_id: string
   name: string
-  emoji: string
+  image_url?: string
   category: string
   price: number
   unit: string
