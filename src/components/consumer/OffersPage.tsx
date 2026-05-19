@@ -4,6 +4,25 @@ import { offers as offersService, savedOffers as savedService } from '../../serv
 import type { Offer, SavedOffer } from '../../types'
 import { CATEGORIES } from '../../types'
 
+function ProductImage({ src, name }: { src?: string; name: string }) {
+  const [error, setError] = useState(false)
+  if (!src || error) {
+    return (
+      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl">
+        🏷️
+      </div>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt={name}
+      className="w-12 h-12 object-cover rounded-lg"
+      onError={() => setError(true)}
+    />
+  )
+}
+
 export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
   const { profile } = useApp()
   const [offerList, setOfferList] = useState<Offer[]>([])
@@ -25,7 +44,9 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
 
   const filtered = offerList.filter(o => {
     const matchCat = category === 'Todos' || o.category === category
-    const matchSearch = !search || o.name.toLowerCase().includes(search.toLowerCase()) || o.markets?.name.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = !search ||
+      o.name.toLowerCase().includes(search.toLowerCase()) ||
+      o.markets?.name.toLowerCase().includes(search.toLowerCase())
     return matchCat && matchSearch
   })
 
@@ -75,7 +96,6 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
 
       {tab === 'offers' && (
         <>
-          {/* Search */}
           <div className="flex gap-2 mb-4">
             <input
               type="text"
@@ -86,7 +106,6 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
             />
           </div>
 
-          {/* Category chips */}
           <div className="flex gap-2 mb-6 flex-wrap">
             {['Todos', ...CATEGORIES].map(cat => (
               <button
@@ -99,12 +118,11 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
             ))}
           </div>
 
-          {/* Grid */}
           {loading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {[...Array(8)].map((_, i) => (
                 <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 animate-pulse">
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg mb-3" />
+                  <div className="w-12 h-12 bg-gray-100 rounded-lg mb-3" />
                   <div className="h-3 bg-gray-100 rounded mb-2 w-3/4" />
                   <div className="h-3 bg-gray-100 rounded mb-3 w-1/2" />
                   <div className="h-5 bg-gray-100 rounded w-1/2" />
@@ -114,7 +132,7 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
           ) : filtered.length === 0 ? (
             <div className="text-center py-16 text-gray-400 text-sm">
               <div className="text-4xl mb-3">🔍</div>
-              Nenhuma oferta encontrada para essa busca.
+              Nenhuma oferta encontrada.
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -132,7 +150,9 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
                     >
                       {isSaved ? '✓' : '+'}
                     </button>
-                    <div className="text-3xl mb-3">{offer.emoji}</div>
+                    <div className="mb-3">
+                      <ProductImage src={offer.image_url} name={offer.name} />
+                    </div>
                     <div className="text-xs font-medium text-gray-800 mb-1 leading-tight">{offer.name}</div>
                     <div className="text-xs text-gray-400 mb-3">{offer.markets?.name}</div>
                     <div className="text-base font-semibold text-emerald-700">
@@ -168,7 +188,7 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
                     >
                       {s.checked && <span className="text-xs">✓</span>}
                     </button>
-                    <span className="text-xl flex-shrink-0">{s.offers?.emoji}</span>
+                    <ProductImage src={s.offers?.image_url} name={s.offers?.name ?? ''} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-gray-800 truncate">{s.offers?.name}</div>
                       <div className="text-xs text-gray-400">{s.offers?.markets?.name}</div>
@@ -188,8 +208,10 @@ export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
                 </div>
                 <button
                   onClick={() => {
-                    const text = saved.map(s => `${s.offers?.emoji} ${s.offers?.name} — R$ ${s.offers?.price.toFixed(2).replace('.', ',')} (${s.offers?.markets?.name})`).join('\n')
-                    window.open(`https://wa.me/?text=${encodeURIComponent('🛒 Minha lista de compras — Oferta do Dia\n\n' + text + `\n\nTotal: R$ ${total.toFixed(2).replace('.', ',')}`)}`,'_blank')
+                    const text = saved.map(s =>
+                      `• ${s.offers?.name} — R$ ${s.offers?.price.toFixed(2).replace('.', ',')} (${s.offers?.markets?.name})`
+                    ).join('\n')
+                    window.open(`https://wa.me/?text=${encodeURIComponent('🛒 Minha lista — Oferta do Dia\n\n' + text + `\n\nTotal: R$ ${total.toFixed(2).replace('.', ',')}`)}`, '_blank')
                   }}
                   className="w-full bg-emerald-500 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-emerald-600 transition-colors mb-2"
                 >
