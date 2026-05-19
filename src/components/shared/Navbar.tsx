@@ -2,17 +2,22 @@ import { useApp } from '../../context/AppContext'
 
 interface NavbarProps {
   page: string
-  setPage: (p: string) => void
+  setPage: (p: any) => void
 }
 
 export function Navbar({ page, setPage }: NavbarProps) {
   const { profile, market, signOut } = useApp()
 
+  async function handleSignOut() {
+    await signOut()
+    setPage('home')
+  }
+
   return (
     <nav className="bg-white border-b border-gray-100 px-4 h-12 flex items-center justify-between sticky top-0 z-10">
-      <button onClick={() => setPage('home')} className="flex items-center gap-2 font-medium text-sm">
-        <div className="w-6 h-6 bg-emerald-500 rounded-md flex items-center justify-center text-white text-xs">🏷</div>
-        Oferta do Dia
+      <button onClick={() => setPage('home')} className="flex items-center gap-2">
+        <img src="/ofertalogo.png" alt="Oferta do Dia" className="h-7 w-7 rounded-lg object-cover" />
+        <span className="font-medium text-sm hidden sm:block">Oferta do Dia</span>
       </button>
 
       <div className="flex items-center gap-1">
@@ -35,7 +40,7 @@ export function Navbar({ page, setPage }: NavbarProps) {
         {profile?.role === 'admin' && (
           <button
             onClick={() => setPage('admin')}
-            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${page === 'admin' ? 'bg-gray-100 font-medium text-emerald-700' : 'text-emerald-600 hover:bg-emerald-50'}`}
+            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${page === 'admin' ? 'bg-red-50 font-medium text-red-600' : 'text-red-400 hover:bg-red-50'}`}
           >
             Admin
           </button>
@@ -43,10 +48,20 @@ export function Navbar({ page, setPage }: NavbarProps) {
 
         {profile ? (
           <div className="flex items-center gap-2 ml-2">
-            <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-medium text-emerald-700">
-              {profile.email[0].toUpperCase()}
+            <div className="flex flex-col items-end">
+              <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-medium text-emerald-700">
+                {profile.email[0].toUpperCase()}
+              </div>
+              {market?.plan === 'pro' && (
+                <span className="text-[9px] text-emerald-600 font-medium leading-none">PRO</span>
+              )}
             </div>
-            <button onClick={signOut} className="text-xs text-gray-400 hover:text-gray-600">Sair</button>
+            <button
+              onClick={handleSignOut}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Sair
+            </button>
           </div>
         ) : (
           <button
