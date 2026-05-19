@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react'
 import type { Profile, Market } from '../types'
-import { auth, profiles, markets } from '../services/supabase'
+import { supabase, profiles, markets } from '../services/supabase'
 
 interface AppState {
   profile: Profile | null
@@ -10,6 +10,7 @@ interface AppState {
   signUp: (email: string, password: string, role?: 'customer' | 'market') => Promise<void>
   signOut: () => Promise<void>
   refreshMarket: () => Promise<void>
+  refreshProfile: () => Promise<void>
 }
 
 const AppContext = createContext<AppState>({} as AppState)
@@ -19,7 +20,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
 
-  async function loadUser(userId: string) {
+  const loadUser = useCallback(async (userId: string) => {
     try {
       const p = await profiles.get(userId)
       setProfile(p)
@@ -34,32 +35,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setProfile(null)
       setMarket(null)
     }
-  }
+  }, [])
 
   useEffect(() => {
-    // Timeout de segurança absoluto: 8 segundos e libera
-    const safetyTimeout = setTimeout(() => {
-      console.warn('Timeout de segurança ativado')
-      setLoading(false)
-    }, 8000)
-
-    async function init() {
-      try {
-        const { data } = await auth.getSession()
-        if (data.session?.user) {
-          await loadUser(data.session.user.id)
-        }
-      } catch (err) {
-        console.error('Erro na sessão:', err)
-      } finally {
-        clearTimeout(safetyTimeout)
-        setLoading(false)
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.user) {
+        await loadUser(data.session.user.id)
       }
-    }
+      setLoading(false)
+    }).catch(() => setLoading(false))
 
-    init()
-
-    const { data: { subscription } } = auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         await loadUser(session.user.id)
       }
@@ -69,14 +55,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    return () => {
-      clearTimeout(safetyTimeout)
-      subscription.unsubscribe()
-    }
-  }, [])
+    return () => subscription.unsubscribe()
+  }, [loadUser])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await auth.signIn(email, password)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new Error(error.message)
   }
 
@@ -85,12 +68,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     password: string,
     role: 'customer' | 'market' = 'customer'
   ) => {
-    const { error } = await auth.signUp(email, password, role)
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { role } },
+    })
     if (error) throw new Error(error.message)
+    if (data.user) {
+      await new Promise(r => setTimeout(r, 600))
+      await supabase.from('profiles').update({ role }).eq('id', data.user.id)
+    }
   }
 
   const signOut = async () => {
-    await auth.signOut()
+    await supabase.auth.signOut()
     setProfile(null)
     setMarket(null)
   }
@@ -101,9 +92,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMarket(m)
   }
 
+  // Recarrega o perfil do banco — usado após admin mudar o plano
+  const refreshProfile = async () => {
+    const { data } = await supabase.auth.getSession()
+    if (data.session?.user) await loadUser(data.session.user.id)
+  }
+
   return (
     <AppContext.Provider
-      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket }}
+      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket, refreshProfile }}
     >
       {children}
     </AppContext.Provider>
