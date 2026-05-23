@@ -1,315 +1,292 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { offers as offersService, markets as marketsService } from '../../services/supabase'
+import { supabase } from '../../services/supabase'
 import { OfferForm } from './OfferForm'
-import type { OfferStats, Market } from '../../types'
+import { MarketOnboarding } from './MarketOnboarding'
+import type { Offer, Market } from '../../types'
+import { Plus, Tag, Eye, Heart, TrendingUp, Crown, AlertCircle, ImageIcon } from 'lucide-react'
 
-type Section = 'dashboard' | 'offers' | 'new' | 'profile'
+interface OfferWithStats extends Offer {
+  views: number
+  saves: number
+}
 
-function ProductImage({ src, name }: { src?: string; name: string }) {
+const FREE_LIMIT = 5
+
+function ProductImage({ src, name }: { src?: string | null; name: string }) {
   const [error, setError] = useState(false)
-  if (!src || error) return <span className="text-xl">🏷️</span>
+  if (src && !error) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className="w-12 h-12 rounded-lg object-cover border border-gray-100"
+        onError={() => setError(true)}
+      />
+    )
+  }
   return (
-    <img
-      src={src}
-      alt={name}
-      className="w-8 h-8 object-cover rounded"
-      onError={() => setError(true)}
-    />
+    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400">
+      <ImageIcon size={20} />
+    </div>
   )
 }
 
 export function MarketDashboard() {
-  const { profile, market, refreshMarket } = useApp()
-  const [section, setSection] = useState<Section>('dashboard')
-  const [offerList, setOfferList] = useState<OfferStats[]>([])
-  const [editing, setEditing] = useState<OfferStats | null>(null)
-  const [profileForm, setProfileForm] = useState<Partial<Market>>({})
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
+  const { market, profile, refreshMarket } = useApp()
+  const [offers, setOffers] = useState<OfferWithStats[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [editOffer, setEditOffer] = useState<Offer | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [limitError, setLimitError] = useState(false)
 
-  const FREE_LIMIT = 5
-  const activeOffers = offerList.filter(o =>
-    o.active && (!o.valid_until || o.valid_until >= new Date().toISOString().split('T')[0])
-  )
   const isPro = market?.plan === 'pro'
-  const canAdd = isPro || activeOffers.length < FREE_LIMIT
+  const activeOffers = offers.filter(o => o.active)
+  const atLimit = !isPro && activeOffers.length >= FREE_LIMIT
 
-  useEffect(() => {
-    if (market?.id) offersService.listByMarket(market.id).then(setOfferList)
-  }, [market?.id])
-
-  useEffect(() => {
-    if (market) setProfileForm({
-      name: market.name, cnpj: market.cnpj, address: market.address,
-      city: market.city, phone: market.phone, description: market.description,
-    })
-  }, [market])
-
-  async function handleCreateOffer(data: any) {
-    await offersService.create(market!.id, data)
-    const updated = await offersService.listByMarket(market!.id)
-    setOfferList(updated)
-    setSection('offers')
-  }
-
-  async function handleEditOffer(data: any) {
-    await offersService.update(editing!.id, data)
-    const updated = await offersService.listByMarket(market!.id)
-    setOfferList(updated)
-    setEditing(null)
-    setSection('offers')
-  }
-
-  async function handleDelete(offerId: string) {
-    if (!confirm('Remover esta oferta?')) return
-    await offersService.remove(offerId)
-    setOfferList(prev => prev.filter(o => o.id !== offerId))
-  }
-
-  async function handleSaveProfile() {
-    setSaving(true)
+  async function loadOffers() {
+    if (!market?.id) return
+    setLoading(true)
     try {
-      await marketsService.update(market!.id, profileForm)
-      await refreshMarket()
-      setMsg('Perfil atualizado!')
-      setTimeout(() => setMsg(''), 3000)
+      const { data } = await supabase
+        .from('offer_stats')
+        .select('*')
+        .eq('market_id', market.id)
+        .order('created_at', { ascending: false })
+      setOffers((data || []) as OfferWithStats[])
     } finally {
-      setSaving(false)
+      setLoading(false)
     }
   }
 
-  const totalViews = offerList.reduce((s, o) => s + (o.views ?? 0), 0)
-  const totalSaves = offerList.reduce((s, o) => s + (o.saves ?? 0), 0)
+  useEffect(() => {
+    if (market?.id) loadOffers()
+  }, [market?.id])
 
-  const nav = (s: Section, label: string, icon: string) => (
-    <button
-      onClick={() => { setSection(s); setEditing(null) }}
-      className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg w-full text-left transition-colors ${section === s ? 'bg-gray-100 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-    >
-      <span>{icon}</span>{label}
-    </button>
-  )
+  if (!market) {
+    return <MarketOnboarding onCreated={refreshMarket} />
+  }
 
-  return (
-    <div className="flex min-h-[calc(100vh-48px)]">
-      <div className="w-52 flex-shrink-0 bg-white border-r border-gray-100 p-3 flex flex-col gap-1">
-        <p className="text-xs text-gray-400 px-3 py-1 mt-1 uppercase tracking-wide">Principal</p>
-        {nav('dashboard', 'Dashboard', '📊')}
-        {nav('offers', 'Minhas ofertas', '🏷️')}
-        {nav('new', 'Nova oferta', '➕')}
-        <p className="text-xs text-gray-400 px-3 py-1 mt-3 uppercase tracking-wide">Conta</p>
-        {nav('profile', 'Perfil do mercado', '🏪')}
+  async function handleSave(data: Partial<Offer>) {
+    if (!market) return
 
-        <div className="mt-auto p-3 bg-emerald-50 rounded-xl text-xs">
-          <p className="font-medium text-emerald-800">{isPro ? '⭐ Plano Pro' : 'Plano Grátis'}</p>
-          {!isPro && <p className="text-emerald-700 mt-0.5">{activeOffers.length}/{FREE_LIMIT} ofertas</p>}
-          {!isPro && (
-            <p className="text-emerald-600 mt-2 leading-tight">
-              Para liberar ilimitado, entre em contato com o suporte.
-            </p>
-          )}
+    // Enforce limit for free plan
+    if (!editOffer && atLimit) {
+      setLimitError(true)
+      return
+    }
+
+    if (editOffer) {
+      await supabase.from('offers').update(data).eq('id', editOffer.id)
+    } else {
+      await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
+    }
+    setShowForm(false)
+    setEditOffer(null)
+    setLimitError(false)
+    loadOffers()
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir esta oferta?')) return
+    await supabase.from('offers').delete().eq('id', id)
+    loadOffers()
+  }
+
+  async function handleToggle(offer: OfferWithStats) {
+    // Can't activate if at limit and free plan
+    if (!offer.active && atLimit && !isPro) {
+      setLimitError(true)
+      return
+    }
+    await supabase.from('offers').update({ active: !offer.active }).eq('id', offer.id)
+    loadOffers()
+  }
+
+  function handleNewOffer() {
+    if (atLimit && !isPro) {
+      setLimitError(true)
+      return
+    }
+    setLimitError(false)
+    setEditOffer(null)
+    setShowForm(true)
+  }
+
+  const totalViews = offers.reduce((a, o) => a + (o.views || 0), 0)
+  const totalSaves = offers.reduce((a, o) => a + (o.saves || 0), 0)
+
+  if (showForm || editOffer) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-lg mx-auto">
+          <button
+            onClick={() => { setShowForm(false); setEditOffer(null) }}
+            className="mb-4 text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1"
+          >
+            ← Voltar
+          </button>
+          <OfferForm
+            offer={editOffer || undefined}
+            onSave={handleSave}
+            onCancel={() => { setShowForm(false); setEditOffer(null) }}
+          />
         </div>
       </div>
+    )
+  }
 
-      <div className="flex-1 p-6 overflow-auto">
-        {msg && (
-          <div className="fixed top-16 right-4 bg-emerald-500 text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
-            {msg}
-          </div>
-        )}
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
 
-        {/* DASHBOARD */}
-        {section === 'dashboard' && (
-          <div>
-            <h1 className="text-lg font-medium mb-1">{market?.name ?? 'Meu mercado'}</h1>
-            <p className="text-sm text-gray-400 mb-6">Visão geral do desempenho</p>
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              {[
-                { label: 'Ofertas ativas', val: activeOffers.length },
-                { label: 'Visualizações totais', val: totalViews },
-                { label: 'Salvos nas listas', val: totalSaves },
-              ].map(m => (
-                <div key={m.label} className="bg-white rounded-xl border border-gray-100 p-4">
-                  <p className="text-xs text-gray-400 mb-1">{m.label}</p>
-                  <p className="text-2xl font-semibold">{m.val}</p>
-                </div>
-              ))}
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          {market.logo_url ? (
+            <img src={market.logo_url} alt={market.name} className="w-12 h-12 rounded-xl object-cover border border-gray-200" />
+          ) : (
+            <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
+              <Tag className="text-emerald-600" size={22} />
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
-                <span className="text-sm font-medium">Ofertas ativas</span>
-                <button onClick={() => setSection('new')} className="text-xs text-emerald-600 hover:underline">+ Nova oferta</button>
-              </div>
-              {activeOffers.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-10">
-                  Nenhuma oferta ativa.{' '}
-                  <button onClick={() => setSection('new')} className="text-emerald-600 hover:underline">Criar primeira oferta</button>
-                </p>
+          )}
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">{market.name}</h1>
+            <div className="flex items-center gap-2">
+              {isPro ? (
+                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                  <Crown size={11} /> Pro
+                </span>
               ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-xs text-gray-400 border-b border-gray-50">
-                      {['Produto', 'Preço', 'Validade', 'Views', 'Salvos'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 font-normal">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeOffers.slice(0, 5).map(o => (
-                      <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                        <td className="px-5 py-3 text-sm flex items-center gap-2">
-                          <ProductImage src={o.image_url} name={o.name} />
-                          {o.name}
-                        </td>
-                        <td className="px-5 py-3 text-sm font-medium text-emerald-700">
-                          R$ {o.price.toFixed(2).replace('.', ',')}
-                        </td>
-                        <td className="px-5 py-3 text-xs text-gray-400">{o.valid_until ?? '—'}</td>
-                        <td className="px-5 py-3 text-sm">{o.views}</td>
-                        <td className="px-5 py-3 text-sm">{o.saves}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-medium">
+                  Grátis — {activeOffers.length}/{FREE_LIMIT} ofertas
+                </span>
               )}
+              <span className="text-xs text-gray-400">{market.city}</span>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* OFFERS LIST */}
-        {section === 'offers' && (
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h1 className="text-lg font-medium">Minhas ofertas</h1>
-                {!isPro && <p className="text-xs text-gray-400">{activeOffers.length} de {FREE_LIMIT} ativas</p>}
-              </div>
-              <button
-                onClick={() => canAdd ? setSection('new') : null}
-                disabled={!canAdd}
-                className="px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-40 transition-colors"
-              >
-                + Nova oferta
-              </button>
-            </div>
-
-            {!canAdd && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-sm text-amber-800">
-                Limite de {FREE_LIMIT} ofertas atingido. Entre em contato para ativar o plano Pro.
-              </div>
-            )}
-
-            {editing && (
-              <div className="bg-white rounded-xl border border-gray-100 p-6 mb-4">
-                <h2 className="text-sm font-medium mb-4">Editando: {editing.name}</h2>
-                <OfferForm initial={editing} onSave={handleEditOffer} onCancel={() => setEditing(null)} />
-              </div>
-            )}
-
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-xs text-gray-400 border-b border-gray-50">
-                    {['Produto', 'Preço', 'Validade', 'Views', 'Salvos', 'Status', ''].map(h => (
-                      <th key={h} className="text-left px-4 py-3 font-normal">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {offerList.map(o => {
-                    const expired = o.valid_until && o.valid_until < new Date().toISOString().split('T')[0]
-                    return (
-                      <tr key={o.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm">
-                          <div className="flex items-center gap-2">
-                            <ProductImage src={o.image_url} name={o.name} />
-                            {o.name}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-emerald-700">
-                          R$ {o.price.toFixed(2).replace('.', ',')}/{o.unit}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-400">{o.valid_until ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{o.views}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">{o.saves}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${expired ? 'bg-gray-100 text-gray-400' : 'bg-emerald-100 text-emerald-700'}`}>
-                            {expired ? 'expirada' : 'ativa'}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <button onClick={() => { setEditing(o); setSection('offers') }} className="text-xs text-gray-400 hover:text-gray-700">Editar</button>
-                            <button onClick={() => handleDelete(o.id)} className="text-xs text-red-300 hover:text-red-500">Excluir</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              {offerList.length === 0 && (
-                <p className="text-sm text-gray-400 text-center py-10">Nenhuma oferta cadastrada ainda.</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* NEW OFFER */}
-        {section === 'new' && (
-          <div>
-            <h1 className="text-lg font-medium mb-6">Nova oferta</h1>
-            <div className="bg-white rounded-xl border border-gray-100 p-6 max-w-2xl">
-              <OfferForm onSave={handleCreateOffer} onCancel={() => setSection('offers')} />
-            </div>
-          </div>
-        )}
-
-        {/* PROFILE */}
-        {section === 'profile' && (
-          <div>
-            <h1 className="text-lg font-medium mb-6">Perfil do mercado</h1>
-            <div className="bg-white rounded-xl border border-gray-100 p-6 max-w-2xl">
-              {msg && <p className="text-xs text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg mb-4">{msg}</p>}
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: 'Nome do estabelecimento', field: 'name', full: true },
-                  { label: 'CNPJ', field: 'cnpj' },
-                  { label: 'Telefone', field: 'phone' },
-                  { label: 'Endereço', field: 'address', full: true },
-                  { label: 'Cidade', field: 'city' },
-                  { label: 'Estado (UF)', field: 'state' },
-                ].map(({ label, field, full }) => (
-                  <div key={field} className={full ? 'col-span-2' : ''}>
-                    <label className="text-xs font-medium text-gray-500 block mb-1">{label}</label>
-                    <input
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
-                      value={(profileForm as any)[field] ?? ''}
-                      onChange={e => setProfileForm(prev => ({ ...prev, [field]: e.target.value }))}
-                    />
-                  </div>
-                ))}
-                <div className="col-span-2">
-                  <label className="text-xs font-medium text-gray-500 block mb-1">Descrição</label>
-                  <textarea
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
-                    rows={3}
-                    value={profileForm.description ?? ''}
-                    onChange={e => setProfileForm(prev => ({ ...prev, description: e.target.value }))}
-                  />
-                </div>
-                <div className="col-span-2 flex justify-end">
-                  <button
-                    onClick={handleSaveProfile}
-                    disabled={saving}
-                    className="px-5 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 font-medium transition-colors"
+        {/* Limit warning */}
+        {!isPro && (
+          <div className={`rounded-xl p-4 flex items-start gap-3 ${atLimit ? 'bg-red-50 border border-red-200' : 'bg-amber-50 border border-amber-200'}`}>
+            <AlertCircle size={18} className={atLimit ? 'text-red-500 mt-0.5 flex-shrink-0' : 'text-amber-500 mt-0.5 flex-shrink-0'} />
+            <div>
+              {atLimit ? (
+                <>
+                  <p className="text-sm font-semibold text-red-700">Limite atingido</p>
+                  <p className="text-xs text-red-600 mt-0.5">
+                    O plano gratuito permite até {FREE_LIMIT} ofertas ativas. Faça upgrade para o plano Pro por R$&nbsp;69,90/mês e publique ofertas ilimitadas.
+                  </p>
+                  <a
+                    href="https://www.instagram.com/oferta_do_dia2026/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors"
                   >
-                    {saving ? 'Salvando...' : 'Salvar alterações'}
+                    <Crown size={12} /> Contratar Pro — R$&nbsp;69,90/mês
+                  </a>
+                </>
+              ) : (
+                <p className="text-sm text-amber-700">
+                  Você tem <strong>{FREE_LIMIT - activeOffers.length}</strong> oferta{FREE_LIMIT - activeOffers.length !== 1 ? 's' : ''} restante{FREE_LIMIT - activeOffers.length !== 1 ? 's' : ''} no plano gratuito.{' '}
+                  <a href="https://www.instagram.com/oferta_do_dia2026/" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Faça upgrade para Pro</a>
+                  {' '}por R$&nbsp;69,90/mês e publique sem limites.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Limit error (when tries to add beyond limit) */}
+        {limitError && !atLimit && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+            Limite do plano gratuito atingido. <a href="https://www.instagram.com/oferta_do_dia2026/" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Contrate o Pro</a> para publicar mais ofertas.
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: 'Ofertas ativas', value: activeOffers.length, icon: <Tag size={16} className="text-emerald-500" /> },
+            { label: 'Visualizações', value: totalViews, icon: <Eye size={16} className="text-blue-500" /> },
+            { label: 'Salvamentos', value: totalSaves, icon: <Heart size={16} className="text-pink-500" /> },
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-xl p-3 shadow-sm text-center">
+              <div className="flex justify-center mb-1">{s.icon}</div>
+              <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+              <p className="text-xs text-gray-500">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <button
+          onClick={handleNewOffer}
+          className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-colors ${
+            atLimit && !isPro
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm'
+          }`}
+        >
+          <Plus size={18} />
+          {atLimit && !isPro ? `Limite atingido — Upgrade para Pro` : 'Nova oferta'}
+        </button>
+
+        {/* Offers list */}
+        {loading ? (
+          <div className="text-center py-10 text-gray-400 text-sm">Carregando...</div>
+        ) : offers.length === 0 ? (
+          <div className="text-center py-10 text-gray-400 text-sm">
+            <TrendingUp size={32} className="mx-auto mb-2 opacity-30" />
+            Nenhuma oferta ainda. Crie sua primeira!
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {offers.map(offer => (
+              <div key={offer.id} className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
+                <ProductImage src={offer.image_url} name={offer.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm truncate">{offer.name}</p>
+                  <p className="text-emerald-600 font-bold text-sm">
+                    R$ {Number(offer.price).toFixed(2)}
+                    {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/ {offer.unit}</span>}
+                  </p>
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-xs text-gray-400 flex items-center gap-1"><Eye size={11} /> {offer.views || 0}</span>
+                    <span className="text-xs text-gray-400 flex items-center gap-1"><Heart size={11} /> {offer.saves || 0}</span>
+                    {offer.expires_at && (
+                      <span className="text-xs text-gray-400">até {new Date(offer.expires_at).toLocaleDateString('pt-BR')}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    onClick={() => handleToggle(offer)}
+                    className={`text-xs px-2 py-1 rounded-full font-medium transition-colors ${
+                      offer.active
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    {offer.active ? 'Ativa' : 'Inativa'}
                   </button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => { setEditOffer(offer); setShowForm(false) }}
+                      className="text-xs text-blue-500 hover:text-blue-700 px-1"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => handleDelete(offer.id)}
+                      className="text-xs text-red-400 hover:text-red-600 px-1"
+                    >
+                      Excluir
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ))}
           </div>
         )}
       </div>
