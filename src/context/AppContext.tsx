@@ -1,13 +1,20 @@
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  ReactNode,
+} from 'react'
+import { supabase } from '../services/supabase'
 import type { Profile, Market } from '../types'
-import { supabase, profiles, markets } from '../services/supabase'
 
 interface AppState {
   profile: Profile | null
   market: Market | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, role?: 'customer' | 'market') => Promise<void>
+  signUp: (email: string, password: string, role: 'customer' | 'market') => Promise<void>
   signOut: () => Promise<void>
   refreshMarket: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -15,59 +22,119 @@ interface AppState {
 
 const AppContext = createContext<AppState>({} as AppState)
 
+const SUPABASE_STORAGE_KEYS = [
+  'sb-jnsxlbmlsumxmwckarxm-auth-token',
+  'supabase.auth.token',
+]
+
+function clearAuthStorage() {
+  SUPABASE_STORAGE_KEYS.forEach(key => localStorage.removeItem(key))
+  // Clear any key starting with sb-
+  Object.keys(localStorage).forEach(key => {
+    if (key.startsWith('sb-')) localStorage.removeItem(key)
+  })
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
+  const resolvedRef = useRef(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const loadUser = useCallback(async (userId: string) => {
+  function resolve() {
+    if (resolvedRef.current) return
+    resolvedRef.current = true
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    setLoading(false)
+  }
+
+  async function loadProfile(userId: string): Promise<void> {
     try {
-      const p = await profiles.get(userId)
-      setProfile(p)
-      if (p?.role === 'market') {
-        const m = await markets.getMine(userId)
-        setMarket(m)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (error || !data) {
+        setProfile(null)
+        setMarket(null)
+        return
+      }
+
+      setProfile(data as Profile)
+
+      if (data.role === 'market') {
+        const { data: mkt } = await supabase
+          .from('markets')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle()
+        setMarket(mkt as Market | null)
       } else {
         setMarket(null)
       }
-    } catch (err) {
-      console.error('Erro ao carregar usuário:', err)
+    } catch {
       setProfile(null)
       setMarket(null)
     }
-  }, [])
+  }
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (data.session?.user) {
-        await loadUser(data.session.user.id)
-      }
-      setLoading(false)
-    }).catch(() => setLoading(false))
+    resolvedRef.current = false
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        await loadUser(session.user.id)
+    // Safety timeout — never stay loading forever
+    timeoutRef.current = setTimeout(() => {
+      resolve()
+    }, 6000)
+
+    // Try to get session once
+    supabase.auth.getSession().then(async ({ data, error }) => {
+      if (error) {
+        // Invalid token — clear and proceed as logged out
+        clearAuthStorage()
+        await supabase.auth.signOut()
+        resolve()
+        return
       }
+
+      if (data.session?.user) {
+        await loadProfile(data.session.user.id)
+      }
+      resolve()
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
         setProfile(null)
         setMarket(null)
+        resolve()
+        return
+      }
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        await loadProfile(session.user.id)
+        return
+      }
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadProfile(session.user.id)
+        resolve()
       }
     })
 
-    return () => subscription.unsubscribe()
-  }, [loadUser])
+    return () => {
+      subscription.unsubscribe()
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new Error(error.message)
   }
 
-  const signUp = async (
-    email: string,
-    password: string,
-    role: 'customer' | 'market' = 'customer'
-  ) => {
+  const signUp = async (email: string, password: string, role: 'customer' | 'market') => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -76,11 +143,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message)
     if (data.user) {
       await new Promise(r => setTimeout(r, 600))
-      await supabase.from('profiles').update({ role }).eq('id', data.user.id)
+      await supabase.from('profiles').upsert(
+        { id: data.user.id, email, role },
+        { onConflict: 'id' }
+      )
     }
   }
 
   const signOut = async () => {
+    clearAuthStorage()
     await supabase.auth.signOut()
     setProfile(null)
     setMarket(null)
@@ -88,20 +159,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshMarket = async () => {
     if (!profile?.id) return
-    const m = await markets.getMine(profile.id)
-    setMarket(m)
+    const { data } = await supabase
+      .from('markets')
+      .select('*')
+      .eq('user_id', profile.id)
+      .maybeSingle()
+    setMarket(data as Market | null)
   }
 
-  // Recarrega o perfil do banco — usado após admin mudar o plano
   const refreshProfile = async () => {
-    const { data } = await supabase.auth.getSession()
-    if (data.session?.user) await loadUser(data.session.user.id)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) await loadProfile(user.id)
   }
 
   return (
-    <AppContext.Provider
-      value={{ profile, market, loading, signIn, signUp, signOut, refreshMarket, refreshProfile }}
-    >
+    <AppContext.Provider value={{
+      profile, market, loading,
+      signIn, signUp, signOut,
+      refreshMarket, refreshProfile,
+    }}>
       {children}
     </AppContext.Provider>
   )
