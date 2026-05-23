@@ -1,230 +1,291 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
-import { offers as offersService, savedOffers as savedService } from '../../services/supabase'
-import type { Offer, SavedOffer } from '../../types'
-import { CATEGORIES } from '../../types'
+import { supabase } from '../../services/supabase'
+import type { Offer, Market } from '../../types'
+import { Search, MapPin, Heart, Eye, Tag, ImageIcon, ShoppingCart, Instagram } from 'lucide-react'
 
-function ProductImage({ src, name }: { src?: string; name: string }) {
+interface OfferCard extends Offer {
+  views: number
+  saves: number
+  market_name?: string
+  market_logo?: string | null
+  markets?: Pick<Market, 'name'>
+}
+
+const CATEGORIES = ['Todos', 'Hortifruti', 'Carnes', 'Laticínios', 'Bebidas', 'Mercearia', 'Limpeza', 'Higiene']
+
+function ProductImage({ src, name }: { src?: string | null; name: string }) {
   const [error, setError] = useState(false)
-  if (!src || error) {
+  if (src && !error) {
     return (
-      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-xl">
-        🏷️
-      </div>
+      <img
+        src={src}
+        alt={name}
+        className="w-full h-36 object-cover"
+        onError={() => setError(true)}
+      />
     )
   }
   return (
-    <img
-      src={src}
-      alt={name}
-      className="w-12 h-12 object-cover rounded-lg"
-      onError={() => setError(true)}
-    />
+    <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
+      <ImageIcon size={28} />
+      <span className="text-xs mt-1 text-gray-300">sem imagem</span>
+    </div>
   )
 }
 
-export function OffersPage({ setPage }: { setPage: (p: string) => void }) {
+function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
+  const [error, setError] = useState(false)
+  if (src && !error) {
+    return (
+      <img
+        src={src}
+        alt={name || ''}
+        className="w-5 h-5 rounded-full object-cover border border-gray-200"
+        onError={() => setError(true)}
+      />
+    )
+  }
+  return <Tag size={12} className="text-gray-400" />
+}
+
+export function OffersPage() {
   const { profile } = useApp()
-  const [offerList, setOfferList] = useState<Offer[]>([])
-  const [saved, setSaved] = useState<SavedOffer[]>([])
-  const [category, setCategory] = useState('Todos')
+  const [offers, setOffers] = useState<OfferCard[]>([])
+  const [saved, setSaved] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
-  const [tab, setTab] = useState<'offers' | 'list'>('offers')
+  const [category, setCategory] = useState('Todos')
   const [loading, setLoading] = useState(true)
+  const [shoppingList, setShoppingList] = useState<OfferCard[]>([])
+  const [showList, setShowList] = useState(false)
+
+  async function loadOffers() {
+    setLoading(true)
+    try {
+      const { data } = await supabase
+        .from('offer_stats')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false })
+      setOffers((data || []) as OfferCard[])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadSaved() {
+    if (!profile?.id) return
+    const { data } = await supabase
+      .from('saved_offers')
+      .select('offer_id')
+      .eq('user_id', profile.id)
+    if (data) setSaved(new Set(data.map(d => d.offer_id)))
+  }
 
   useEffect(() => {
-    offersService.list().then(data => { setOfferList(data); setLoading(false) })
-  }, [])
-
-  useEffect(() => {
-    if (profile) savedService.list(profile.id).then(setSaved)
-  }, [profile])
-
-  const savedIds = new Set(saved.map(s => s.offer_id))
-
-  const filtered = offerList.filter(o => {
-    const matchCat = category === 'Todos' || o.category === category
-    const matchSearch = !search ||
-      o.name.toLowerCase().includes(search.toLowerCase()) ||
-      o.markets?.name.toLowerCase().includes(search.toLowerCase())
-    return matchCat && matchSearch
-  })
+    loadOffers()
+    loadSaved()
+  }, [profile?.id])
 
   async function toggleSave(offerId: string) {
-    if (!profile) { setPage('auth'); return }
-    await savedService.toggle(offerId, profile.id)
-    const updated = await savedService.list(profile.id)
-    setSaved(updated)
-    offersService.trackView(offerId)
+    if (!profile?.id) return
+    if (saved.has(offerId)) {
+      await supabase.from('saved_offers').delete()
+        .eq('offer_id', offerId).eq('user_id', profile.id)
+      setSaved(s => { const n = new Set(s); n.delete(offerId); return n })
+    } else {
+      await supabase.from('saved_offers').insert({ offer_id: offerId, user_id: profile.id })
+      setSaved(s => new Set([...s, offerId]))
+    }
   }
 
-  async function toggleCheck(savedId: string, checked: boolean) {
-    await savedService.setChecked(savedId, checked)
-    setSaved(prev => prev.map(s => s.id === savedId ? { ...s, checked } : s))
+  async function recordView(offerId: string) {
+    await supabase.from('offer_views').insert({ offer_id: offerId })
   }
 
-  async function clearList() {
-    if (!profile) return
-    await savedService.clear(profile.id)
-    setSaved([])
+  function toggleCart(offer: OfferCard) {
+    setShoppingList(list => {
+      const exists = list.find(o => o.id === offer.id)
+      if (exists) return list.filter(o => o.id !== offer.id)
+      return [...list, offer]
+    })
   }
 
-  const total = saved.reduce((sum, s) => sum + (s.offers?.price ?? 0), 0)
+  const filtered = offers.filter(o => {
+    const matchSearch = !search ||
+      o.name.toLowerCase().includes(search.toLowerCase()) ||
+      (o.market_name || '').toLowerCase().includes(search.toLowerCase())
+    const matchCat = category === 'Todos' || (o.category || '') === category
+    return matchSearch && matchCat
+  })
 
-  return (
-    <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* Tab switch */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setTab('offers')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors ${tab === 'offers' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
-        >
-          Ofertas do dia
-        </button>
-        <button
-          onClick={() => setTab('list')}
-          className={`px-4 py-2 text-sm rounded-lg font-medium transition-colors flex items-center gap-2 ${tab === 'list' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
-        >
-          Minha lista
-          {saved.length > 0 && (
-            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${tab === 'list' ? 'bg-white text-gray-900' : 'bg-emerald-500 text-white'}`}>
-              {saved.length}
-            </span>
-          )}
-        </button>
-      </div>
+  const totalList = shoppingList.reduce((a, o) => a + Number(o.price), 0)
 
-      {tab === 'offers' && (
-        <>
-          <div className="flex gap-2 mb-4">
-            <input
-              type="text"
-              placeholder="Buscar produto ou mercado..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-400"
-            />
-          </div>
-
-          <div className="flex gap-2 mb-6 flex-wrap">
-            {['Todos', ...CATEGORIES].map(cat => (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
-                className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${category === cat ? 'bg-emerald-100 border-emerald-400 text-emerald-800 font-medium' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {[...Array(8)].map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-gray-100 p-4 animate-pulse">
-                  <div className="w-12 h-12 bg-gray-100 rounded-lg mb-3" />
-                  <div className="h-3 bg-gray-100 rounded mb-2 w-3/4" />
-                  <div className="h-3 bg-gray-100 rounded mb-3 w-1/2" />
-                  <div className="h-5 bg-gray-100 rounded w-1/2" />
-                </div>
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 text-sm">
-              <div className="text-4xl mb-3">🔍</div>
-              Nenhuma oferta encontrada.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {filtered.map(offer => {
-                const isSaved = savedIds.has(offer.id)
-                return (
-                  <div
-                    key={offer.id}
-                    className={`relative bg-white rounded-xl border p-4 transition-all cursor-pointer group ${isSaved ? 'border-emerald-300 bg-emerald-50' : 'border-gray-100 hover:border-gray-200'}`}
-                    onClick={() => toggleSave(offer.id)}
-                  >
-                    <button
-                      className={`absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all ${isSaved ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100'}`}
-                      aria-label={isSaved ? 'Remover da lista' : 'Adicionar à lista'}
-                    >
-                      {isSaved ? '✓' : '+'}
-                    </button>
-                    <div className="mb-3">
-                      <ProductImage src={offer.image_url} name={offer.name} />
-                    </div>
-                    <div className="text-xs font-medium text-gray-800 mb-1 leading-tight">{offer.name}</div>
-                    <div className="text-xs text-gray-400 mb-3">{offer.markets?.name}</div>
-                    <div className="text-base font-semibold text-emerald-700">
-                      R$ {offer.price.toFixed(2).replace('.', ',')}
-                    </div>
-                    <div className="text-xs text-gray-400">por {offer.unit}</div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      {tab === 'list' && (
-        <div className="max-w-lg">
-          {saved.length === 0 ? (
-            <div className="text-center py-16 text-gray-400 text-sm">
-              <div className="text-4xl mb-3">🛒</div>
-              Sua lista está vazia.<br />
-              <button onClick={() => setTab('offers')} className="text-emerald-600 hover:underline mt-2 block mx-auto">
-                Ver ofertas do dia
-              </button>
-            </div>
+  if (showList) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-lg mx-auto px-4 py-6">
+          <button onClick={() => setShowList(false)} className="text-sm text-gray-500 mb-4 flex items-center gap-1">
+            ← Voltar
+          </button>
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Minha lista de compras</h2>
+          {shoppingList.length === 0 ? (
+            <p className="text-center text-gray-400 py-10 text-sm">Nenhum item na lista.</p>
           ) : (
             <>
-              <div className="flex flex-col gap-2 mb-6">
-                {saved.map(s => (
-                  <div key={s.id} className={`flex items-center gap-3 bg-white border border-gray-100 rounded-xl px-4 py-3 ${s.checked ? 'opacity-50' : ''}`}>
-                    <button
-                      onClick={() => toggleCheck(s.id, !s.checked)}
-                      className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${s.checked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300'}`}
-                    >
-                      {s.checked && <span className="text-xs">✓</span>}
-                    </button>
-                    <ProductImage src={s.offers?.image_url} name={s.offers?.name ?? ''} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">{s.offers?.name}</div>
-                      <div className="text-xs text-gray-400">{s.offers?.markets?.name}</div>
+              <div className="space-y-2 mb-4">
+                {shoppingList.map(o => (
+                  <div key={o.id} className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm text-gray-900">{o.name}</p>
+                      <p className="text-xs text-gray-500">{o.market_name}</p>
                     </div>
-                    <span className="text-sm font-semibold text-emerald-700 flex-shrink-0">
-                      R$ {s.offers?.price.toFixed(2).replace('.', ',')}
-                    </span>
-                    <button onClick={() => toggleSave(s.offer_id)} className="text-gray-300 hover:text-gray-500 text-lg flex-shrink-0">×</button>
+                    <p className="font-bold text-emerald-600 text-sm">R$ {Number(o.price).toFixed(2)}</p>
+                    <button onClick={() => toggleCart(o)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
                   </div>
                 ))}
               </div>
-
-              <div className="bg-white border border-gray-100 rounded-xl px-4 py-4">
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-sm text-gray-500">Total estimado</span>
-                  <span className="text-xl font-semibold">R$ {total.toFixed(2).replace('.', ',')}</span>
-                </div>
-                <button
-                  onClick={() => {
-                    const text = saved.map(s =>
-                      `• ${s.offers?.name} — R$ ${s.offers?.price.toFixed(2).replace('.', ',')} (${s.offers?.markets?.name})`
-                    ).join('\n')
-                    window.open(`https://wa.me/?text=${encodeURIComponent('🛒 Minha lista — Oferta do Dia\n\n' + text + `\n\nTotal: R$ ${total.toFixed(2).replace('.', ',')}`)}`, '_blank')
-                  }}
-                  className="w-full bg-emerald-500 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-emerald-600 transition-colors mb-2"
-                >
-                  📲 Compartilhar no WhatsApp
-                </button>
-                <button onClick={clearList} className="w-full border border-gray-200 text-gray-500 rounded-lg py-2 text-sm hover:bg-gray-50 transition-colors">
-                  Esvaziar lista
-                </button>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+                <p className="text-sm text-gray-600">Total estimado</p>
+                <p className="text-2xl font-bold text-emerald-600">R$ {totalList.toFixed(2)}</p>
               </div>
+              <button
+                onClick={() => {
+                  const text = shoppingList.map(o => `• ${o.name} — R$ ${Number(o.price).toFixed(2)} (${o.market_name})`).join('\n')
+                  window.open(`https://wa.me/?text=${encodeURIComponent(`Minha lista de compras:\n${text}\n\nTotal: R$ ${totalList.toFixed(2)}\n\nOfertas via ofertasdodia.vercel.app`)}`)
+                }}
+                className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+              >
+                Compartilhar no WhatsApp
+              </button>
             </>
           )}
         </div>
-      )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+
+        {/* Search */}
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar produto ou mercado..."
+            className="w-full pl-9 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+          />
+        </div>
+
+        {/* Categories */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setCategory(cat)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                category === cat
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-white text-gray-600 border border-gray-200'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Shopping list FAB */}
+        {shoppingList.length > 0 && (
+          <button
+            onClick={() => setShowList(true)}
+            className="fixed bottom-6 right-4 bg-emerald-500 text-white rounded-full px-4 py-3 shadow-lg flex items-center gap-2 text-sm font-semibold z-50"
+          >
+            <ShoppingCart size={16} />
+            {shoppingList.length} {shoppingList.length === 1 ? 'item' : 'itens'}
+          </button>
+        )}
+
+        {/* Offers grid */}
+        {loading ? (
+          <div className="text-center py-12 text-gray-400 text-sm">Carregando ofertas...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            <Tag size={32} className="mx-auto mb-2 opacity-30" />
+            Nenhuma oferta encontrada.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {filtered.map(offer => (
+              <div
+                key={offer.id}
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                onClick={() => recordView(offer.id)}
+              >
+                <div className="relative">
+                  <ProductImage src={offer.image_url} name={offer.name} />
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleSave(offer.id) }}
+                    className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow ${
+                      saved.has(offer.id)
+                        ? 'bg-pink-500 text-white'
+                        : 'bg-white/80 text-gray-400'
+                    }`}
+                  >
+                    <Heart size={14} fill={saved.has(offer.id) ? 'currentColor' : 'none'} />
+                  </button>
+                </div>
+                <div className="p-3">
+                  <p className="font-semibold text-sm text-gray-900 leading-tight line-clamp-2">{offer.name}</p>
+                  <p className="text-emerald-600 font-bold text-base mt-1">
+                    R$ {Number(offer.price).toFixed(2)}
+                    {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/{offer.unit}</span>}
+                  </p>
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <MarketLogo src={offer.market_logo} name={offer.market_name} />
+                    <span className="text-xs text-gray-500 truncate">{offer.market_name}</span>
+                  </div>
+                  {offer.expires_at && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Até {new Date(offer.expires_at).toLocaleDateString('pt-BR')}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                      <Eye size={11} /> {offer.views || 0}
+                    </span>
+                    <button
+                      onClick={e => { e.stopPropagation(); toggleCart(offer) }}
+                      className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${
+                        shoppingList.find(o => o.id === offer.id)
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-gray-100 text-gray-600'
+                      }`}
+                    >
+                      {shoppingList.find(o => o.id === offer.id) ? '✓ Na lista' : '+ Lista'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="text-center pt-4 pb-8">
+          <a
+            href="https://www.instagram.com/oferta_do_dia2026/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-xs text-gray-400 hover:text-pink-500 transition-colors"
+          >
+            <Instagram size={14} />
+            @oferta_do_dia2026
+          </a>
+        </div>
+      </div>
     </div>
   )
 }
