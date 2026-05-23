@@ -1,76 +1,107 @@
 import { useApp } from '../../context/AppContext'
+import { Tag, LogIn, LogOut, LayoutDashboard, ShieldCheck, Instagram } from 'lucide-react'
+
+type Route = 'home' | 'login' | 'dashboard' | 'admin'
 
 interface NavbarProps {
-  page: string
-  setPage: (p: any) => void
+  route: Route
+  onNavigate: (to: Route) => void
 }
 
-export function Navbar({ page, setPage }: NavbarProps) {
-  const { profile, market, signOut } = useApp()
+export function Navbar({ route, onNavigate }: NavbarProps) {
+  const { profile, signOut } = useApp()
 
   async function handleSignOut() {
     await signOut()
-    setPage('home')
+    onNavigate('home')
   }
 
   return (
-    <nav className="bg-white border-b border-gray-100 px-4 h-12 flex items-center justify-between sticky top-0 z-10">
-      <button onClick={() => setPage('home')} className="flex items-center gap-2">
-        <img src="/ofertalogo.png" alt="Oferta do Dia" className="h-7 w-7 rounded-lg object-cover" />
-        <span className="font-medium text-sm hidden sm:block">Oferta do Dia</span>
-      </button>
-
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => setPage('offers')}
-          className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${page === 'offers' ? 'bg-gray-100 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
-        >
-          Ofertas
+    <nav className="bg-white border-b border-gray-100 sticky top-0 z-40 shadow-sm">
+      <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+        {/* Logo */}
+        <button onClick={() => onNavigate('home')} className="flex items-center gap-2">
+          <img
+            src="/ofertalogo.png"
+            alt="Oferta do Dia"
+            className="h-8 object-contain"
+            onError={e => {
+              const t = e.currentTarget
+              t.style.display = 'none'
+              const fallback = t.nextElementSibling as HTMLElement | null
+              if (fallback) fallback.style.display = 'flex'
+            }}
+          />
+          {/* Fallback text logo */}
+          <span
+            className="hidden items-center gap-1.5 font-bold text-emerald-600 text-lg"
+            style={{ display: 'none' }}
+          >
+            <Tag size={18} />
+            Oferta do Dia
+          </span>
         </button>
 
-        {profile?.role === 'market' && (
-          <button
-            onClick={() => setPage('dashboard')}
-            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${page === 'dashboard' ? 'bg-gray-100 font-medium' : 'text-gray-500 hover:bg-gray-50'}`}
+        {/* Actions */}
+        <div className="flex items-center gap-1">
+          {/* Instagram link */}
+          <a
+            href="https://www.instagram.com/oferta_do_dia2026/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 text-gray-400 hover:text-pink-500 transition-colors rounded-lg"
+            title="Contato"
           >
-            Meu painel
-          </button>
-        )}
+            <Instagram size={18} />
+          </a>
 
-        {profile?.role === 'admin' && (
-          <button
-            onClick={() => setPage('admin')}
-            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${page === 'admin' ? 'bg-red-50 font-medium text-red-600' : 'text-red-400 hover:bg-red-50'}`}
-          >
-            Admin
-          </button>
-        )}
+          {profile?.role === 'admin' && (
+            <button
+              onClick={() => onNavigate('admin')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                route === 'admin'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <ShieldCheck size={15} />
+              <span className="hidden sm:inline">Admin</span>
+            </button>
+          )}
 
-        {profile ? (
-          <div className="flex items-center gap-2 ml-2">
-            <div className="flex flex-col items-end">
-              <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center text-xs font-medium text-emerald-700">
-                {profile.email[0].toUpperCase()}
-              </div>
-              {market?.plan === 'pro' && (
-                <span className="text-[9px] text-emerald-600 font-medium leading-none">PRO</span>
-              )}
-            </div>
+          {profile?.role === 'market' && (
+            <button
+              onClick={() => onNavigate('dashboard')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                route === 'dashboard'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <LayoutDashboard size={15} />
+              <span className="hidden sm:inline">Painel</span>
+            </button>
+          )}
+
+          {profile ? (
             <button
               onClick={handleSignOut}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Sair"
             >
-              Sair
+              <LogOut size={15} />
+              <span className="hidden sm:inline">Sair</span>
             </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setPage('auth')}
-            className="ml-2 px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
-          >
-            Entrar
-          </button>
-        )}
+          ) : (
+            <button
+              onClick={() => onNavigate('login')}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <LogIn size={15} />
+              Entrar
+            </button>
+          )}
+        </div>
       </div>
     </nav>
   )
