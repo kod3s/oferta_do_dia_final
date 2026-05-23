@@ -22,14 +22,7 @@ interface AppState {
 
 const AppContext = createContext<AppState>({} as AppState)
 
-const SUPABASE_STORAGE_KEYS = [
-  'sb-jnsxlbmlsumxmwckarxm-auth-token',
-  'supabase.auth.token',
-]
-
 function clearAuthStorage() {
-  SUPABASE_STORAGE_KEYS.forEach(key => localStorage.removeItem(key))
-  // Clear any key starting with sb-
   Object.keys(localStorage).forEach(key => {
     if (key.startsWith('sb-')) localStorage.removeItem(key)
   })
@@ -39,39 +32,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [market, setMarket] = useState<Market | null>(null)
   const [loading, setLoading] = useState(true)
-  const resolvedRef = useRef(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialized = useRef(false)
 
-  function resolve() {
-    if (resolvedRef.current) return
-    resolvedRef.current = true
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    setLoading(false)
-  }
-
-  async function loadProfile(userId: string): Promise<void> {
+  async function loadProfile(userId: string) {
     try {
-      const { data, error } = await supabase
+      const { data: p } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .maybeSingle()
 
-      if (error || !data) {
-        setProfile(null)
-        setMarket(null)
-        return
-      }
+      if (!p) { setProfile(null); setMarket(null); return }
+      setProfile(p as Profile)
 
-      setProfile(data as Profile)
-
-      if (data.role === 'market') {
-        const { data: mkt } = await supabase
+      if (p.role === 'market') {
+        const { data: m } = await supabase
           .from('markets')
           .select('*')
           .eq('user_id', userId)
           .maybeSingle()
-        setMarket(mkt as Market | null)
+        setMarket(m as Market | null)
       } else {
         setMarket(null)
       }
@@ -82,50 +62,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    resolvedRef.current = false
+    // Safety net: never stay loading more than 8s
+    const timeout = setTimeout(() => setLoading(false), 8000)
 
-    // Safety timeout — never stay loading forever
-    timeoutRef.current = setTimeout(() => {
-      resolve()
-    }, 6000)
+    // Single source of truth: onAuthStateChange
+    // INITIAL_SESSION fires immediately on mount with current session or null
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (initialized.current && event === 'INITIAL_SESSION') return
 
-    // Try to get session once
-    supabase.auth.getSession().then(async ({ data, error }) => {
-      if (error) {
-        // Invalid token — clear and proceed as logged out
-        clearAuthStorage()
-        await supabase.auth.signOut()
-        resolve()
-        return
-      }
+        if (event === 'INITIAL_SESSION') {
+          initialized.current = true
+          if (session?.user) {
+            await loadProfile(session.user.id)
+          }
+          clearTimeout(timeout)
+          setLoading(false)
+          return
+        }
 
-      if (data.session?.user) {
-        await loadProfile(data.session.user.id)
-      }
-      resolve()
-    })
+        if (event === 'SIGNED_IN' && session?.user) {
+          await loadProfile(session.user.id)
+          return
+        }
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setProfile(null)
-        setMarket(null)
-        resolve()
-        return
+        if (event === 'SIGNED_OUT') {
+          setProfile(null)
+          setMarket(null)
+          return
+        }
+
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
+          // Silently refresh profile if needed
+          await loadProfile(session.user.id)
+          return
+        }
       }
-      if (event === 'TOKEN_REFRESHED' && session?.user) {
-        await loadProfile(session.user.id)
-        return
-      }
-      if (event === 'SIGNED_IN' && session?.user) {
-        await loadProfile(session.user.id)
-        resolve()
-      }
-    })
+    )
 
     return () => {
       subscription.unsubscribe()
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      clearTimeout(timeout)
     }
   }, [])
 
@@ -142,7 +119,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     if (error) throw new Error(error.message)
     if (data.user) {
-      await new Promise(r => setTimeout(r, 600))
+      await new Promise(r => setTimeout(r, 800))
       await supabase.from('profiles').upsert(
         { id: data.user.id, email, role },
         { onConflict: 'id' }
@@ -151,10 +128,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
-    clearAuthStorage()
-    await supabase.auth.signOut()
     setProfile(null)
     setMarket(null)
+    clearAuthStorage()
+    await supabase.auth.signOut()
   }
 
   const refreshMarket = async () => {
