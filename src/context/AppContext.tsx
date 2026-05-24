@@ -62,20 +62,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Safety net: never stay loading more than 8s
     const timeout = setTimeout(() => setLoading(false), 8000)
 
-    // Single source of truth: onAuthStateChange
-    // INITIAL_SESSION fires immediately on mount with current session or null
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (initialized.current && event === 'INITIAL_SESSION') return
-
         if (event === 'INITIAL_SESSION') {
+          if (initialized.current) { setLoading(false); return }
           initialized.current = true
-          if (session?.user) {
-            await loadProfile(session.user.id)
-          }
+          if (session?.user) await loadProfile(session.user.id)
           clearTimeout(timeout)
           setLoading(false)
           return
@@ -83,17 +77,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (event === 'SIGNED_IN' && session?.user) {
           await loadProfile(session.user.id)
+          setLoading(false)
           return
         }
 
         if (event === 'SIGNED_OUT') {
           setProfile(null)
           setMarket(null)
+          setLoading(false)
           return
         }
 
         if (event === 'TOKEN_REFRESHED' && session?.user) {
-          // Silently refresh profile if needed
           await loadProfile(session.user.id)
           return
         }
