@@ -39,7 +39,6 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handler)
   }, [])
 
-  // Redireciona baseado no perfil carregado
   useEffect(() => {
     if (loading) return
     if (!profile) {
@@ -71,7 +70,6 @@ export default function App() {
   }
 
   function renderPage() {
-    // Páginas protegidas
     if (route === 'dashboard') {
       if (!profile) return <AuthPage onSuccess={() => {}} />
       return <MarketDashboard />
