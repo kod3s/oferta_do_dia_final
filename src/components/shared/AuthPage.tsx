@@ -1,197 +1,123 @@
 import { useState } from 'react'
 import { useApp } from '../../context/AppContext'
-import { markets as marketsService } from '../../services/supabase'
+import { Tag } from 'lucide-react'
 
-export function AuthPage() {
-  const { signIn, signUp, profile, refreshMarket } = useApp()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
-  const [accountType, setAccountType] = useState<'customer' | 'market'>('customer')
+interface AuthPageProps {
+  onSuccess: () => void
+}
+
+export function AuthPage({ onSuccess }: AuthPageProps) {
+  const { signIn, signUp } = useApp()
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [marketName, setMarketName] = useState('')
-  const [marketCity, setMarketCity] = useState('')
-  const [error, setError] = useState('')
+  const [role, setRole] = useState<'customer' | 'market'>('customer')
   const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
+  const [error, setError] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-
-    if (mode === 'register' && accountType === 'market' && !marketName.trim()) {
-      setError('Informe o nome do mercado.')
-      return
-    }
-
+  async function handleSubmit() {
+    if (!email || !password) { setError('Preencha todos os campos.'); return }
     setLoading(true)
+    setError('')
     try {
       if (mode === 'login') {
         await signIn(email, password)
       } else {
-        await signUp(email, password, accountType)
-        if (accountType === 'market') {
-          setSuccess(true)
-        } else {
-          setSuccess(true)
-        }
+        await signUp(email, password, role)
       }
-    } catch (err: any) {
-      setError(err.message ?? 'Erro inesperado. Tente novamente.')
+      onSuccess()
+    } catch (e: any) {
+      setError(e.message || 'Erro ao autenticar.')
     } finally {
       setLoading(false)
     }
   }
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-sm border border-gray-100">
-          <div className="text-4xl mb-4">📬</div>
-          <h2 className="text-lg font-medium mb-2">Verifique seu e-mail</h2>
-          <p className="text-sm text-gray-500">
-            Enviamos um link de confirmação para <strong>{email}</strong>.
-            Clique no link para ativar sua conta.
-          </p>
-          <button
-            onClick={() => { setSuccess(false); setMode('login') }}
-            className="mt-6 text-sm text-emerald-600 hover:underline"
-          >
-            Voltar para o login
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-7 h-7 bg-emerald-500 rounded-lg flex items-center justify-center text-white text-sm">🏷</div>
-          <span className="font-medium">Oferta do Dia</span>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-sm p-8 w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <Tag className="text-emerald-600" size={22} />
+          </div>
+          <h1 className="text-xl font-bold text-gray-900">Oferta do Dia</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {mode === 'login' ? 'Entre na sua conta' : 'Crie sua conta'}
+          </p>
         </div>
 
-        <h1 className="text-xl font-medium mb-1">
-          {mode === 'login' ? 'Entrar na conta' : 'Criar conta'}
-        </h1>
-        <p className="text-sm text-gray-500 mb-6">
-          {mode === 'login'
-            ? 'Acesse o painel do seu mercado ou lista de compras.'
-            : 'Escolha o tipo de conta para começar.'}
-        </p>
+        <div className="space-y-4">
+          {mode === 'signup' && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1.5">Tipo de conta</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setRole('customer')}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    role === 'customer'
+                      ? 'bg-emerald-500 text-white border-emerald-500'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  Consumidor
+                </button>
+                <button
+                  onClick={() => setRole('market')}
+                  className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                    role === 'market'
+                      ? 'bg-emerald-500 text-white border-emerald-500'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  Mercado
+                </button>
+              </div>
+            </div>
+          )}
 
-        {/* Seletor de tipo — só no cadastro */}
-        {mode === 'register' && (
-          <div className="grid grid-cols-2 gap-2 mb-6">
-            <button
-              type="button"
-              onClick={() => setAccountType('customer')}
-              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-sm transition-colors ${
-                accountType === 'customer'
-                  ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-medium'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
-              }`}
-            >
-              <span className="text-2xl">🛒</span>
-              Consumidor
-              <span className="text-xs font-normal text-gray-400">Buscar ofertas</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setAccountType('market')}
-              className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border text-sm transition-colors ${
-                accountType === 'market'
-                  ? 'border-emerald-400 bg-emerald-50 text-emerald-800 font-medium'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
-              }`}
-            >
-              <span className="text-2xl">🏪</span>
-              Mercado
-              <span className="text-xs font-normal text-gray-400">Publicar ofertas</span>
-            </button>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1">E-mail</label>
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">E-mail</label>
             <input
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              required
               placeholder="seu@email.com"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
             />
           </div>
+
           <div>
-            <label className="text-xs text-gray-500 font-medium block mb-1">Senha</label>
+            <label className="text-sm font-medium text-gray-700 block mb-1.5">Senha</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              required
-              minLength={6}
-              placeholder="Mínimo 6 caracteres"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+              placeholder="••••••••"
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
             />
           </div>
 
-          {/* Campos extras para mercado */}
-          {mode === 'register' && accountType === 'market' && (
-            <>
-              <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">Nome do mercado *</label>
-                <input
-                  type="text"
-                  value={marketName}
-                  onChange={e => setMarketName(e.target.value)}
-                  required
-                  placeholder="Ex: Supermercado Central"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium block mb-1">Cidade</label>
-                <input
-                  type="text"
-                  value={marketCity}
-                  onChange={e => setMarketCity(e.target.value)}
-                  placeholder="Ex: São Paulo"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
-                />
-              </div>
-            </>
-          )}
-
           {error && (
-            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>
           )}
 
           <button
-            type="submit"
+            onClick={handleSubmit}
             disabled={loading}
-            className="w-full bg-emerald-500 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+            className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
           >
-            {loading
-              ? 'Aguarde...'
-              : mode === 'login'
-              ? 'Entrar'
-              : accountType === 'market'
-              ? 'Criar conta do mercado'
-              : 'Criar conta'}
+            {loading ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
           </button>
-        </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          {mode === 'login' ? 'Não tem conta?' : 'Já tem conta?'}{' '}
           <button
-            onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError('') }}
-            className="text-emerald-600 hover:underline font-medium"
+            onClick={() => { setMode(m => m === 'login' ? 'signup' : 'login'); setError('') }}
+            className="w-full text-sm text-gray-500 hover:text-gray-700 py-1"
           >
-            {mode === 'login' ? 'Criar conta' : 'Entrar'}
+            {mode === 'login' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entre'}
           </button>
-        </p>
+        </div>
       </div>
     </div>
   )
