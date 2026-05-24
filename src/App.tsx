@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useApp } from './context/AppContext'
 import { Navbar } from './components/shared/Navbar'
-import { AuthPage } from './components/auth/AuthPage'
+import { AuthPage } from './components/shared/AuthPage'
 import { OffersPage } from './components/consumer/OffersPage'
 import { MarketDashboard } from './components/market/MarketDashboard'
 import { AdminPanel } from './components/admin/AdminPanel'
