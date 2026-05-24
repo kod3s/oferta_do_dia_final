@@ -39,49 +39,57 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handler)
   }, [])
 
-  // Auto-redirect based on role
+  // Redireciona baseado no perfil carregado
   useEffect(() => {
     if (loading) return
-    if (!profile && route === 'dashboard') navigate('login')
-    if (!profile && route === 'admin') navigate('login')
-    if (profile?.role === 'admin' && route === 'login') navigate('admin')
-    if (profile?.role === 'market' && route === 'login') navigate('dashboard')
-    if (profile?.role === 'customer' && route === 'login') navigate('home')
+    if (!profile) {
+      if (route === 'dashboard' || route === 'admin') navigate('login')
+      return
+    }
+    if (profile.role === 'admin') {
+      if (route === 'login' || route === 'home') navigate('admin')
+    } else if (profile.role === 'market') {
+      if (route === 'login' || route === 'home') navigate('dashboard')
+    } else {
+      if (route === 'login') navigate('home')
+    }
   }, [profile, loading])
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
-        <img src="/ofertalogo.png" alt="Oferta do Dia" className="h-14 object-contain" onError={e => (e.currentTarget.style.display = 'none')} />
-        <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <img
+          src="/ofertalogo.png"
+          alt="Oferta do Dia"
+          className="h-14 object-contain"
+          onError={e => (e.currentTarget.style.display = 'none')}
+        />
+        <div className="w-8 h-8 border-[3px] border-emerald-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-gray-400">Carregando...</p>
       </div>
     )
   }
 
   function renderPage() {
-    if (route === 'login') return <AuthPage onSuccess={() => {
-      if (profile?.role === 'admin') navigate('admin')
-      else if (profile?.role === 'market') navigate('dashboard')
-      else navigate('home')
-    }} />
-    if (route === 'dashboard') return profile ? <MarketDashboard /> : <AuthPage onSuccess={() => navigate('dashboard')} />
-    if (route === 'admin') return profile?.role === 'admin' ? <AdminPanel /> : <AuthPage onSuccess={() => navigate('admin')} />
+    // Páginas protegidas
+    if (route === 'dashboard') {
+      if (!profile) return <AuthPage onSuccess={() => {}} />
+      return <MarketDashboard />
+    }
+    if (route === 'admin') {
+      if (profile?.role !== 'admin') return <AuthPage onSuccess={() => {}} />
+      return <AdminPanel />
+    }
+    if (route === 'login') {
+      return <AuthPage onSuccess={() => {}} />
+    }
     return <OffersPage />
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navbar
-        route={route}
-        onNavigate={navigate}
-      />
-      <div
-        style={{
-          opacity: visible ? 1 : 0,
-          transition: 'opacity 120ms ease',
-        }}
-      >
+      <Navbar route={route} onNavigate={navigate} />
+      <div style={{ opacity: visible ? 1 : 0, transition: 'opacity 120ms ease' }}>
         {renderPage()}
       </div>
     </div>
