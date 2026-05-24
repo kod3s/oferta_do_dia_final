@@ -12,6 +12,7 @@ export interface Market {
   id: string
   user_id: string
   name: string
+  logo_url?: string | null
   cnpj?: string
   address?: string
   city?: string
@@ -28,21 +29,24 @@ export interface Offer {
   id: string
   market_id: string
   name: string
-  image_url?: string
+  image_url?: string | null
   category: string
   price: number
   unit: string
   stock?: number
   note?: string
-  valid_until?: string
+  expires_at?: string | null
+  valid_until?: string | null
   active: boolean
   created_at: string
-  markets?: Pick<Market, 'name' | 'city' | 'address'>
+  markets?: Pick<Market, 'name' | 'city'>
 }
 
 export interface OfferStats extends Offer {
   views: number
   saves: number
+  market_name?: string
+  market_logo?: string | null
 }
 
 export interface SavedOffer {
