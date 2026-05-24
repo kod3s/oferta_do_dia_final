@@ -118,8 +118,8 @@ export function MarketDashboard() {
           >
             ← Voltar
           </button>
-          <OfferForm
-            offer={editOffer || undefined}
+         <OfferForm
+            initial={editOffer || undefined}
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditOffer(null) }}
           />
