@@ -111,7 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) throw new Error(error.message)
   }
 
-  const signUp = async (email: string, password: string, role: 'customer' | 'market') => {
+const signUp = async (email: string, password: string, role: 'customer' | 'market') => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -119,7 +119,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     if (error) throw new Error(error.message)
     if (data.user) {
-      await new Promise(r => setTimeout(r, 800))
       await supabase.from('profiles').upsert(
         { id: data.user.id, email, role },
         { onConflict: 'id' }
