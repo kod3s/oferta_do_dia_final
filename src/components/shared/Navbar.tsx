@@ -24,7 +24,7 @@ export function Navbar({ route, onNavigate }: NavbarProps) {
           <img
             src="/ofertalogo.png"
             alt="Oferta do Dia"
-            className="h-8 object-contain"
+            className="h-12 object-contain"
             onError={e => {
               const t = e.currentTarget
               t.style.display = 'none'
