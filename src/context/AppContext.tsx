@@ -50,30 +50,38 @@ async function loadProfile(userId: string) {
   }
 
 useEffect(() => {
-  const timeout = setTimeout(() => setLoading(false), 5000)
+  let done = false
+
+  function finish() {
+    if (done) return
+    done = true
+    setLoading(false)
+  }
+
+  // Se demorar mais de 3s, libera a tela sem sessão
+  const timeout = setTimeout(() => {
+    finish()
+  }, 3000)
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
       if (event === 'INITIAL_SESSION') {
-        if (initialized.current) return
-        initialized.current = true
-        clearTimeout(timeout)
         if (session?.user) {
-          setLoading(true)
           await loadProfile(session.user.id)
         }
-        setLoading(false)
+        clearTimeout(timeout)
+        finish()
         return
       }
       if (event === 'SIGNED_IN' && session?.user) {
         await loadProfile(session.user.id)
-        setLoading(false)
+        finish()
         return
       }
       if (event === 'SIGNED_OUT') {
         setProfile(null)
         setMarket(null)
-        setLoading(false)
+        finish()
         return
       }
       if (event === 'TOKEN_REFRESHED' && session?.user) {
