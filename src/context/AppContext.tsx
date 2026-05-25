@@ -34,27 +34,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const initialized = useRef(false)
 
-  async function loadProfile(userId: string) {
+async function loadProfile(userId: string) {
     try {
-      const { data: p } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
-
+      const [{ data: p }, { data: m }] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        supabase.from('markets').select('*').eq('user_id', userId).maybeSingle(),
+      ])
       if (!p) { setProfile(null); setMarket(null); return }
       setProfile(p as Profile)
-
-      if (p.role === 'market') {
-        const { data: m } = await supabase
-          .from('markets')
-          .select('*')
-          .eq('user_id', userId)
-          .maybeSingle()
-        setMarket(m as Market | null)
-      } else {
-        setMarket(null)
-      }
+      setMarket(p.role === 'market' ? m as Market | null : null)
     } catch {
       setProfile(null)
       setMarket(null)
