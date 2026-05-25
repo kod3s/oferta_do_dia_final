@@ -49,45 +49,45 @@ async function loadProfile(userId: string) {
     }
   }
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setLoading(false), 8000)
+useEffect(() => {
+  const timeout = setTimeout(() => setLoading(false), 5000)
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'INITIAL_SESSION') {
-          if (initialized.current) { setLoading(false); return }
-          initialized.current = true
-          if (session?.user) await loadProfile(session.user.id)
-          clearTimeout(timeout)
-          setLoading(false)
-          return
-        }
-
-        if (event === 'SIGNED_IN' && session?.user) {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    async (event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (initialized.current) return
+        initialized.current = true
+        clearTimeout(timeout)
+        if (session?.user) {
+          setLoading(true)
           await loadProfile(session.user.id)
-          setLoading(false)
-          return
         }
-
-        if (event === 'SIGNED_OUT') {
-          setProfile(null)
-          setMarket(null)
-          setLoading(false)
-          return
-        }
-
-        if (event === 'TOKEN_REFRESHED' && session?.user) {
-          await loadProfile(session.user.id)
-          return
-        }
+        setLoading(false)
+        return
       }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(timeout)
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadProfile(session.user.id)
+        setLoading(false)
+        return
+      }
+      if (event === 'SIGNED_OUT') {
+        setProfile(null)
+        setMarket(null)
+        setLoading(false)
+        return
+      }
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        await loadProfile(session.user.id)
+        return
+      }
     }
-  }, [])
+  )
+
+  return () => {
+    subscription.unsubscribe()
+    clearTimeout(timeout)
+  }
+}, [])
 
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
