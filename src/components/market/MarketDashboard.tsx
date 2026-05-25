@@ -27,7 +27,7 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
 }
 
 export function MarketDashboard() {
-  const { market, profile, refreshMarket } = useApp()
+  const { market, refreshMarket } = useApp()
   const [offers, setOffers] = useState<OfferWithStats[]>([])
   const [showForm, setShowForm] = useState(false)
   const [editOffer, setEditOffer] = useState<Offer | null>(null)
@@ -37,7 +37,6 @@ export function MarketDashboard() {
   const [logoErr, setLogoErr] = useState(false)
   const [savingLogo, setSavingLogo] = useState(false)
 
-  // Calculate limit based on actually active offers fetched from DB
   const activeOffers = offers.filter(o => o.active)
   const isPro = market?.plan === 'pro'
   const atLimit = !isPro && activeOffers.length >= FREE_LIMIT
@@ -46,7 +45,6 @@ export function MarketDashboard() {
     if (!market?.id) return
     setLoadingOffers(true)
     try {
-      // Query directly from offers table to avoid view issues
       const { data } = await supabase
         .from('offers')
         .select('*')
@@ -62,26 +60,27 @@ export function MarketDashboard() {
     if (market?.id) loadOffers()
   }, [market?.id])
 
- async function handleSave(data: Partial<Offer>) {
+  async function handleSave(data: Partial<Offer>) {
     if (!market) return
     if (!editOffer) {
       const currentActive = offers.filter(o => o.active).length
       if (!isPro && currentActive >= FREE_LIMIT) return
     }
-  if (editOffer) {
-    await supabase.from('offers').update(data).eq('id', editOffer.id)
-  } else {
-    await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
-  }
-  setShowForm(false)
-  setEditOffer(null)
-  await loadOffers()
-  
-    async function handleDelete(id: string) {
-      if (!confirm('Excluir esta oferta?')) return
-      await supabase.from('offers').delete().eq('id', id)
-      await loadOffers()
+    if (editOffer) {
+      await supabase.from('offers').update(data).eq('id', editOffer.id)
+    } else {
+      await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
     }
+    setShowForm(false)
+    setEditOffer(null)
+    await loadOffers()
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir esta oferta?')) return
+    await supabase.from('offers').delete().eq('id', id)
+    await loadOffers()
+  }
 
   async function handleToggle(offer: OfferWithStats) {
     if (!offer.active && atLimit) return
@@ -100,7 +99,6 @@ export function MarketDashboard() {
     if (!error) {
       setEditingLogo(false)
       await refreshMarket()
-      console.log
     }
   }
 
@@ -117,7 +115,7 @@ export function MarketDashboard() {
           >
             ← Voltar
           </button>
-         <OfferForm
+          <OfferForm
             initial={editOffer || undefined}
             onSave={handleSave}
             onCancel={() => { setShowForm(false); setEditOffer(null) }}
@@ -142,7 +140,6 @@ export function MarketDashboard() {
         {/* Header com logo editável */}
         <div className="bg-white rounded-2xl shadow-sm p-4">
           <div className="flex items-center gap-4">
-            {/* Logo */}
             <div className="relative flex-shrink-0">
               {market.logo_url ? (
                 <img
@@ -164,7 +161,6 @@ export function MarketDashboard() {
                 <Pencil size={11} />
               </button>
             </div>
-
             <div className="flex-1 min-w-0">
               <h1 className="text-lg font-bold text-gray-900">{market.name}</h1>
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
@@ -182,7 +178,6 @@ export function MarketDashboard() {
             </div>
           </div>
 
-          {/* Edição de logo inline */}
           {editingLogo && (
             <div className="mt-4 border-t border-gray-100 pt-4 space-y-2">
               <label className="text-xs font-medium text-gray-600">URL da logo do mercado</label>
@@ -201,7 +196,7 @@ export function MarketDashboard() {
                 />
               )}
               {logoErr && <p className="text-xs text-red-500">URL inválida ou imagem não carregou.</p>}
-              <p className="text-xs text-gray-400">Hospede em imgur.com, imgbb.com ou similar e cole o link direto.</p>
+              <p className="text-xs text-gray-400">Hospede em imgur.com, imgbb.com ou similar.</p>
               <div className="flex gap-2">
                 <button
                   onClick={saveLogo}
@@ -268,7 +263,7 @@ export function MarketDashboard() {
           ))}
         </div>
 
-        {/* Botão Nova oferta — só aparece se não atingiu o limite */}
+        {/* Botão Nova oferta */}
         {!atLimit ? (
           <button
             onClick={() => { setEditOffer(null); setShowForm(true) }}
