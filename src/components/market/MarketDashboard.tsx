@@ -307,7 +307,7 @@ export function MarketDashboard() {
                     {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/ {offer.unit}</span>}
                   </p>
                   {offer.valid_until && (
-                    <p className="text-xs text-gray-400">até {new Date(offer.valid_until).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-xs text-gray-400">Até {new Date(offer.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-2 flex-shrink-0">
