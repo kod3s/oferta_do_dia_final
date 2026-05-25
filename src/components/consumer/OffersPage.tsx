@@ -62,10 +62,12 @@ export function OffersPage() {
   async function loadOffers() {
     setLoading(true)
     try {
+    const today = new Date().toISOString().split('T')[0]
     const { data } = await supabase
       .from('offers')
       .select('*, markets(name, logo_url)')
       .eq('active', true)
+      .or(`valid_until.is.null,valid_until.gte.${today}`)
       .order('created_at', { ascending: false })
       setOffers((data || []) as OfferCard[])
     } finally {
