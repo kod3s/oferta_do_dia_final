@@ -6,64 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Oferta do Dia — Encontre as melhores promoções dos supermercados perto de você" />
     <title>Oferta do Dia</title>
-    <script>
-      // Limpa tokens Supabase expirados ANTES do React carregar
-      // Isso evita o travamento no carregamento sem precisar limpar manualmente
-      try {
-        Object.keys(localStorage).forEach(function(key) {
-          if (!key.startsWith('sb-')) return;
-          try {
-            var raw = localStorage.getItem(key);
-            if (!raw) return;
-            var parsed = JSON.parse(raw);
-            // Tenta pegar expires_at direto ou do access_token JWT
-            var exp = parsed.expires_at;
-            if (!exp && parsed.access_token) {
-              var payload = parsed.access_token.split('.')[1];
-              exp = JSON.parse(atob(payload)).exp;
-            }
-            // Remove se expirado (com 60s de margem)
-            if (exp && (exp - 60) * 1000 < Date.now()) {
-              localStorage.removeItem(key);
-            }
-          } catch (e) {
-            // Token malformado — remove
-            localStorage.removeItem(key);
-          }
-        });
-      } catch (e) {
-        // Fallback: remove tudo sb-
-        try {
-          Object.keys(localStorage).forEach(function(key) {
-            if (key.startsWith('sb-')) localStorage.removeItem(key);
-          });
-        } catch (_) {}
-      }
-    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-  try {
-    Object.keys(localStorage).forEach(function(key) {
-      if (!key.startsWith('sb-')) return;
-      try {
-        var raw = localStorage.getItem(key);
-        if (!raw) return;
-        var parsed = JSON.parse(raw);
-        var exp = parsed.expires_at;
-        if (!exp && parsed.access_token) {
-          exp = JSON.parse(atob(parsed.access_token.split('.')[1])).exp;
-        }
-        if (exp && (exp - 60) * 1000 < Date.now()) {
-          localStorage.removeItem(key);
-        }
-      } catch (e) {
-        localStorage.removeItem(key);
-      }
-    });
-  } catch (e) {}
-</script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
