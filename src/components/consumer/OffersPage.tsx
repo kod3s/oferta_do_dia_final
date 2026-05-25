@@ -62,11 +62,11 @@ export function OffersPage() {
   async function loadOffers() {
     setLoading(true)
     try {
-      const { data } = await supabase
-        .from('offer_stats')
-        .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: false })
+    const { data } = await supabase
+      .from('offers')
+      .select('*, markets(name, logo_url)')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
       setOffers((data || []) as OfferCard[])
     } finally {
       setLoading(false)
@@ -244,8 +244,8 @@ export function OffersPage() {
                     {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/{offer.unit}</span>}
                   </p>
                   <div className="flex items-center gap-1 mt-1.5">
-                    <MarketLogo src={offer.market_logo} name={offer.market_name} />
-                    <span className="text-xs text-gray-500 truncate">{offer.market_name}</span>
+                    <MarketLogo src={(offer.markets as any)?.logo_url} name={(offer.markets as any)?.name} />
+                    <span className="text-xs text-gray-500 truncate">{(offer.markets as any)?.name}</span>
                   </div>
                   {offer.expires_at && (
                     <p className="text-xs text-gray-400 mt-1">
