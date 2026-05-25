@@ -68,24 +68,20 @@ export function MarketDashboard() {
       const currentActive = offers.filter(o => o.active).length
       if (!isPro && currentActive >= FREE_LIMIT) return
     }
-    if (editOffer) {
-      const { data: updated } = await supabase
-        .from('offers').update(data).eq('id', editOffer.id).select().single()
-      if (updated) setOffers(prev => prev.map(o => o.id === editOffer.id ? { ...o, ...updated } : o))
-    } else {
-      const { data: created } = await supabase
-        .from('offers').insert({ ...data, market_id: market.id, active: true }).select().single()
-      if (created) setOffers(prev => [{ ...created, views: 0, saves: 0 } as OfferWithStats, ...prev])
+  if (editOffer) {
+    await supabase.from('offers').update(data).eq('id', editOffer.id)
+  } else {
+    await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
+  }
+  setShowForm(false)
+  setEditOffer(null)
+  await loadOffers()
+  
+    async function handleDelete(id: string) {
+      if (!confirm('Excluir esta oferta?')) return
+      await supabase.from('offers').delete().eq('id', id)
+      await loadOffers()
     }
-    setShowForm(false)
-    setEditOffer(null)
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir esta oferta?')) return
-    await supabase.from('offers').delete().eq('id', id)
-    await loadOffers()
-  }
 
   async function handleToggle(offer: OfferWithStats) {
     if (!offer.active && atLimit) return
