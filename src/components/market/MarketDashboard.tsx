@@ -102,6 +102,7 @@ export function MarketDashboard() {
     if (!error) {
       setEditingLogo(false)
       await refreshMarket()
+      console.log
     }
   }
 
