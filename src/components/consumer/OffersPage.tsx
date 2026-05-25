@@ -251,7 +251,7 @@ export function OffersPage() {
                   </div>
                   {offer.valid_until && (
                     <p className="text-xs text-gray-400 mt-1">
-                      Até {new Date(offer.valid_until).toLocaleDateString('pt-BR')}
+                      Até {new Date(offer.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   )}
                   <div className="flex items-center justify-between mt-2">
