@@ -62,21 +62,23 @@ export function MarketDashboard() {
     if (market?.id) loadOffers()
   }, [market?.id])
 
-  async function handleSave(data: Partial<Offer>) {
+ async function handleSave(data: Partial<Offer>) {
     if (!market) return
-    // Re-check limit at save time using current active count
     if (!editOffer) {
       const currentActive = offers.filter(o => o.active).length
       if (!isPro && currentActive >= FREE_LIMIT) return
     }
     if (editOffer) {
-      await supabase.from('offers').update(data).eq('id', editOffer.id)
+      const { data: updated } = await supabase
+        .from('offers').update(data).eq('id', editOffer.id).select().single()
+      if (updated) setOffers(prev => prev.map(o => o.id === editOffer.id ? { ...o, ...updated } : o))
     } else {
-      await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
+      const { data: created } = await supabase
+        .from('offers').insert({ ...data, market_id: market.id, active: true }).select().single()
+      if (created) setOffers(prev => [{ ...created, views: 0, saves: 0 } as OfferWithStats, ...prev])
     }
     setShowForm(false)
     setEditOffer(null)
-    await loadOffers()
   }
 
   async function handleDelete(id: string) {
