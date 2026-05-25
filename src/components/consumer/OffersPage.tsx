@@ -247,9 +247,9 @@ export function OffersPage() {
                     <MarketLogo src={(offer.markets as any)?.logo_url} name={(offer.markets as any)?.name} />
                     <span className="text-xs text-gray-500 truncate">{(offer.markets as any)?.name}</span>
                   </div>
-                  {offer.expires_at && (
+                  {offer.valid_until && (
                     <p className="text-xs text-gray-400 mt-1">
-                      Até {new Date(offer.expires_at).toLocaleDateString('pt-BR')}
+                      Até {new Date(offer.valid_until).toLocaleDateString('pt-BR')}
                     </p>
                   )}
                   <div className="flex items-center justify-between mt-2">
