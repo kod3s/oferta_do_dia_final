@@ -61,7 +61,7 @@ useEffect(() => {
   // Se demorar mais de 3s, libera a tela sem sessão
   const timeout = setTimeout(() => {
     finish()
-  }, 3000)
+  }, 2000)
 
   const { data: { subscription } } = supabase.auth.onAuthStateChange(
     async (event, session) => {
