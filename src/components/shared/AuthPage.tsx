@@ -37,9 +37,12 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-sm p-8 w-full max-w-sm">
         <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-3">
-            <Tag className="text-emerald-600" size={22} />
-          </div>
+        <img
+            src="/ofertalogo.png"
+            alt="Oferta do Dia"
+            className="h-16 object-contain mx-auto mb-3"
+            onError={e => (e.currentTarget.style.display = 'none')}
+          />
           <h1 className="text-xl font-bold text-gray-900">Oferta do Dia</h1>
           <p className="text-sm text-gray-500 mt-1">
             {mode === 'login' ? 'Entre na sua conta' : 'Crie sua conta'}
