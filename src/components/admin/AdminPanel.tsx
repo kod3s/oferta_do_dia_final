@@ -36,6 +36,7 @@ export function AdminPanel() {
     if (!confirm('Excluir este usuário permanentemente?')) return
     await supabase.from('profiles').delete().eq('id', userId)
     setUsers(u => u.filter(p => p.id !== userId))
+    setMarkets(m => m.filter(mk => mk.user_id !== userId))
   }
 
   async function setPlan(marketId: string, plan: 'free' | 'pro') {
