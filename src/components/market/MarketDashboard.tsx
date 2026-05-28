@@ -61,16 +61,18 @@ export function MarketDashboard() {
     if (market?.id) loadOffers()
   }, [market?.id])
 
-  async function handleSave(data: Partial<Offer>) {
+async function handleSave(data: Partial<Offer>) {
     if (!market) return
     if (!editOffer) {
       const currentActive = offers.filter(o => o.active).length
       if (!isPro && currentActive >= FREE_LIMIT) return
     }
     if (editOffer) {
-      await supabase.from('offers').update(data).eq('id', editOffer.id)
+      const { error } = await supabase.from('offers').update(data).eq('id', editOffer.id)
+      if (error) throw new Error(error.message)
     } else {
-      await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
+      const { error } = await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
+      if (error) throw new Error(error.message)
     }
     setShowForm(false)
     setEditOffer(null)
