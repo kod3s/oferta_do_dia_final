@@ -1,3 +1,4 @@
+import { MarketOnboarding } from './MarketOnboarding'
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { supabase } from '../../services/supabase'
@@ -125,12 +126,8 @@ export function MarketDashboard() {
     )
   }
 
-  if (!market) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Carregando...</p>
-      </div>
-    )
+if (!market) {
+    return <MarketOnboarding onCreated={refreshMarket} />
   }
 
   return (
