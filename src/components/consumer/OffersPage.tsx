@@ -262,10 +262,6 @@ export function OffersPage() {
                       Até {new Date(offer.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   )}
-                  <div className="flex items-center mt-2">
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Eye size={11} /> {(offer as any).views || 0}
-                    </span>
                   </div>
                 </div>
               </div>
