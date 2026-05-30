@@ -62,34 +62,45 @@ export function MarketDashboard() {
   }, [market?.id])
 
 async function handleSave(data: Partial<Offer>) {
-    if (!market) return
-    if (!editOffer) {
-      const currentActive = offers.filter(o => o.active).length
-      if (!isPro && currentActive >= FREE_LIMIT) return
-    }
-    if (editOffer) {
-      const { error } = await supabase.from('offers').update(data).eq('id', editOffer.id)
-      if (error) throw new Error(error.message)
-    } else {
-      const { error } = await supabase.from('offers').insert({ ...data, market_id: market.id, active: true })
-      if (error) throw new Error(error.message)
-    }
-    setShowForm(false)
-    setEditOffer(null)
-    await loadOffers()
+  if (!market) return
+  if (!editOffer) {
+    const currentActive = offers.filter(o => o.active).length
+    if (!isPro && currentActive >= FREE_LIMIT) return
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Excluir esta oferta?')) return
-    await supabase.from('offers').delete().eq('id', id)
-    await loadOffers()
+  if (editOffer) {
+    // Atualiza local imediatamente
+    setOffers(prev => prev.map(o => o.id === editOffer.id ? { ...o, ...data } : o))
+    const { error } = await supabase.from('offers').update(data).eq('id', editOffer.id)
+    if (error) throw new Error(error.message)
+  } else {
+    const { data: created, error } = await supabase
+      .from('offers')
+      .insert({ ...data, market_id: market.id, active: true })
+      .select()
+      .single()
+    if (error) throw new Error(error.message)
+    if (created) setOffers(prev => [{ ...created, views: 0, saves: 0 } as OfferWithStats, ...prev])
   }
 
-  async function handleToggle(offer: OfferWithStats) {
-    if (!offer.active && atLimit) return
-    await supabase.from('offers').update({ active: !offer.active }).eq('id', offer.id)
-    await loadOffers()
-  }
+  setShowForm(false)
+  setEditOffer(null)
+  // Recarrega em segundo plano sem bloquear a UI
+  loadOffers()
+}
+async function handleToggle(offer: OfferWithStats) {
+  if (!offer.active && atLimit) return
+  // Atualiza local imediatamente
+  setOffers(prev => prev.map(o => o.id === offer.id ? { ...o, active: !o.active } : o))
+  await supabase.from('offers').update({ active: !offer.active }).eq('id', offer.id)
+}
+
+async function handleDelete(id: string) {
+  if (!confirm('Excluir esta oferta?')) return
+  // Remove local imediatamente
+  setOffers(prev => prev.filter(o => o.id !== id))
+  await supabase.from('offers').delete().eq('id', id)
+}
 
   async function saveLogo() {
     if (!market?.id) return
