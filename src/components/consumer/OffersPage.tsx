@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { supabase } from '../../services/supabase'
-import type { Offer, Market } from '../../types'
+import type { Offer } from '../../types'
 import { Search, Heart, Eye, Tag, ImageIcon, ShoppingCart, Instagram, Plus, Minus, X } from 'lucide-react'
 
 interface OfferCard extends Offer {
@@ -9,7 +9,7 @@ interface OfferCard extends Offer {
   saves: number
   market_name?: string
   market_logo?: string | null
-  markets?: { name: string; logo_url?: string | null }
+  markets?: { name: string; logo_url?: string | null; id?: string }
 }
 
 interface CartItem {
@@ -21,11 +21,8 @@ const CATEGORIES = ['Todos', 'Hortifruti', 'Carnes', 'Laticínios', 'Bebidas', '
 
 function ProductImage({ src, name }: { src?: string | null; name: string }) {
   const [error, setError] = useState(false)
-  if (src && !error) {
-    return (
-      <img src={src} alt={name} className="w-full h-36 object-cover" onError={() => setError(true)} />
-    )
-  }
+  if (src && !error)
+    return <img src={src} alt={name} className="w-full h-36 object-cover" onError={() => setError(true)} />
   return (
     <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
       <ImageIcon size={28} />
@@ -36,14 +33,12 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
 
 function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
   const [error, setError] = useState(false)
-  if (src && !error) {
+  if (src && !error)
     return <img src={src} alt={name || ''} className="w-5 h-5 rounded-full object-cover border border-gray-200" onError={() => setError(true)} />
-  }
   return <Tag size={12} className="text-gray-400" />
 }
 
 export function OffersPage() {
-  const { profile } = useApp()
   const [offers, setOffers] = useState<OfferCard[]>([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Todos')
@@ -57,7 +52,7 @@ export function OffersPage() {
       const today = new Date().toISOString().split('T')[0]
       const { data } = await supabase
         .from('offers')
-        .select('*, markets(name, logo_url)')
+        .select('*, markets(id, name, logo_url)')
         .eq('active', true)
         .or(`valid_until.is.null,valid_until.gte.${today}`)
         .order('created_at', { ascending: false })
@@ -77,6 +72,10 @@ export function OffersPage() {
     return (offer.markets as any)?.logo_url || offer.market_logo || null
   }
 
+  function getMarketId(offer: OfferCard): string | null {
+    return (offer.markets as any)?.id || offer.market_id || null
+  }
+
   function toggleCart(offer: OfferCard) {
     setCart(prev => {
       const exists = prev.find(i => i.offer.id === offer.id)
@@ -86,15 +85,37 @@ export function OffersPage() {
   }
 
   function setQty(offerId: string, qty: number) {
-    if (qty < 1) {
-      setCart(prev => prev.filter(i => i.offer.id !== offerId))
-      return
-    }
+    if (qty < 1) { setCart(prev => prev.filter(i => i.offer.id !== offerId)); return }
     setCart(prev => prev.map(i => i.offer.id === offerId ? { ...i, qty } : i))
   }
 
   function isInCart(offerId: string) {
     return cart.some(i => i.offer.id === offerId)
+  }
+
+  async function recordView(offerId: string) {
+    await supabase.from('offer_views').insert({ offer_id: offerId })
+  }
+
+  async function shareWhatsApp() {
+    // Registrar shares por mercado antes de abrir o WhatsApp
+    const shareInserts = cart.map(({ offer, qty }) => ({
+      market_id: getMarketId(offer),
+      offer_id: offer.id,
+      quantity: qty,
+      unit_price: Number(offer.price),
+    })).filter(s => s.market_id)
+
+    if (shareInserts.length > 0) {
+      await supabase.from('whatsapp_shares').insert(shareInserts)
+    }
+
+    const text = cart.map(({ offer, qty }) =>
+      `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
+    ).join('\n')
+
+    const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
+    window.open(`https://wa.me/?text=${encodeURIComponent(`🛒 Minha lista de compras:\n\n${text}\n\n💰 Total: R$ ${total.toFixed(2)}\n\nOfertas via Oferta do Dia`)}`)
   }
 
   const filtered = offers.filter(o => {
@@ -105,11 +126,7 @@ export function OffersPage() {
     return matchSearch && matchCat
   })
 
-  const totalList = cart.reduce((a, i) => a + Number(i.offer.price) * i.qty, 0)
-
-  async function recordView(offerId: string) {
-    await supabase.from('offer_views').insert({ offer_id: offerId })
-  }
+  const totalList = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
 
   if (showList) {
     return (
@@ -134,19 +151,12 @@ export function OffersPage() {
                         <span className="text-gray-400 font-normal ml-1">({qty}x R$ {Number(offer.price).toFixed(2)})</span>
                       </p>
                     </div>
-                    {/* Controle de quantidade */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setQty(offer.id, qty - 1)}
-                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-                      >
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setQty(offer.id, qty - 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                         <Minus size={12} />
                       </button>
                       <span className="text-sm font-semibold w-5 text-center">{qty}</span>
-                      <button
-                        onClick={() => setQty(offer.id, qty + 1)}
-                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
-                      >
+                      <button onClick={() => setQty(offer.id, qty + 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
                         <Plus size={12} />
                       </button>
                     </div>
@@ -161,12 +171,7 @@ export function OffersPage() {
                 <p className="text-2xl font-bold text-emerald-600">R$ {totalList.toFixed(2)}</p>
               </div>
               <button
-                onClick={() => {
-                  const text = cart.map(({ offer, qty }) =>
-                    `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
-                  ).join('\n')
-                  window.open(`https://wa.me/?text=${encodeURIComponent(`🛒 Minha lista de compras:\n\n${text}\n\n💰 Total: R$ ${totalList.toFixed(2)}\n\nOfertas via Oferta do Dia`)}`)
-                }}
+                onClick={shareWhatsApp}
                 className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
               >
                 Compartilhar no WhatsApp
@@ -182,7 +187,6 @@ export function OffersPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
 
-        {/* Search */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -193,7 +197,6 @@ export function OffersPage() {
           />
         </div>
 
-        {/* Categories */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {CATEGORIES.map(cat => (
             <button
@@ -208,7 +211,6 @@ export function OffersPage() {
           ))}
         </div>
 
-        {/* Cart FAB */}
         {cart.length > 0 && (
           <button
             onClick={() => setShowList(true)}
@@ -219,7 +221,6 @@ export function OffersPage() {
           </button>
         )}
 
-        {/* Offers grid */}
         {loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Carregando ofertas...</div>
         ) : filtered.length === 0 ? (
@@ -232,12 +233,11 @@ export function OffersPage() {
             {filtered.map(offer => (
               <div
                 key={offer.id}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => recordView(offer.id)}
               >
                 <div className="relative">
                   <ProductImage src={offer.image_url} name={offer.name} />
-                  {/* Coração = adicionar à lista */}
                   <button
                     onClick={e => { e.stopPropagation(); toggleCart(offer) }}
                     className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow ${
@@ -262,7 +262,7 @@ export function OffersPage() {
                       Até {new Date(offer.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   )}
-                  <div className="flex items-center justify-between mt-2">
+                  <div className="flex items-center mt-2">
                     <span className="text-xs text-gray-400 flex items-center gap-1">
                       <Eye size={11} /> {(offer as any).views || 0}
                     </span>
@@ -273,7 +273,6 @@ export function OffersPage() {
           </div>
         )}
 
-        {/* Footer */}
         <div className="text-center pt-4 pb-8">
           <a
             href="https://www.instagram.com/oferta_do_dia2026/"
