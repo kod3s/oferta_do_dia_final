@@ -1,12 +1,12 @@
-import { MarketOnboarding } from './MarketOnboarding'
 import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { supabase } from '../../services/supabase'
 import { OfferForm } from './OfferForm'
+import { MarketOnboarding } from './MarketOnboarding'
 import type { Offer } from '../../types'
 import {
-  Tag, Eye, Heart, TrendingUp, Crown, AlertCircle,
-  ImageIcon, Plus, Pencil, Trash2, X, Check
+  Tag, TrendingUp, Crown, AlertCircle,
+  ImageIcon, Plus, Pencil, Trash2, X, Check, ShoppingBag
 } from 'lucide-react'
 
 interface OfferWithStats extends Offer {
@@ -37,6 +37,8 @@ export function MarketDashboard() {
   const [logoInput, setLogoInput] = useState('')
   const [logoErr, setLogoErr] = useState(false)
   const [savingLogo, setSavingLogo] = useState(false)
+  const [salesPotential, setSalesPotential] = useState(0)
+  const [shareCount, setShareCount] = useState(0)
 
   const activeOffers = offers.filter(o => o.active)
   const isPro = market?.plan === 'pro'
@@ -57,50 +59,63 @@ export function MarketDashboard() {
     }
   }
 
+  async function loadSalesPotential() {
+    if (!market?.id) return
+    const { data } = await supabase
+      .from('whatsapp_shares')
+      .select('total, quantity')
+      .eq('market_id', market.id)
+    if (data) {
+      const total = data.reduce((a, r) => a + Number(r.total || 0), 0)
+      const count = data.reduce((a, r) => a + Number(r.quantity || 0), 0)
+      setSalesPotential(total)
+      setShareCount(count)
+    }
+  }
+
   useEffect(() => {
-    if (market?.id) loadOffers()
+    if (market?.id) {
+      loadOffers()
+      loadSalesPotential()
+    }
   }, [market?.id])
 
-async function handleSave(data: Partial<Offer>) {
-  if (!market) return
-  if (!editOffer) {
-    const currentActive = offers.filter(o => o.active).length
-    if (!isPro && currentActive >= FREE_LIMIT) return
+  if (!market) return <MarketOnboarding onCreated={refreshMarket} />
+
+  async function handleSave(data: Partial<Offer>) {
+    if (!market) return
+    if (!editOffer) {
+      const currentActive = offers.filter(o => o.active).length
+      if (!isPro && currentActive >= FREE_LIMIT) return
+    }
+    if (editOffer) {
+      const { error } = await supabase.from('offers').update(data).eq('id', editOffer.id)
+      if (error) throw new Error(error.message)
+      setOffers(prev => prev.map(o => o.id === editOffer.id ? { ...o, ...data } : o))
+    } else {
+      const { data: created, error } = await supabase
+        .from('offers')
+        .insert({ ...data, market_id: market.id, active: true })
+        .select().single()
+      if (error) throw new Error(error.message)
+      if (created) setOffers(prev => [{ ...created, views: 0, saves: 0 } as OfferWithStats, ...prev])
+    }
+    setShowForm(false)
+    setEditOffer(null)
+    loadOffers()
   }
 
-  if (editOffer) {
-    // Atualiza local imediatamente
-    setOffers(prev => prev.map(o => o.id === editOffer.id ? { ...o, ...data } : o))
-    const { error } = await supabase.from('offers').update(data).eq('id', editOffer.id)
-    if (error) throw new Error(error.message)
-  } else {
-    const { data: created, error } = await supabase
-      .from('offers')
-      .insert({ ...data, market_id: market.id, active: true })
-      .select()
-      .single()
-    if (error) throw new Error(error.message)
-    if (created) setOffers(prev => [{ ...created, views: 0, saves: 0 } as OfferWithStats, ...prev])
+  async function handleDelete(id: string) {
+    if (!confirm('Excluir esta oferta?')) return
+    setOffers(prev => prev.filter(o => o.id !== id))
+    await supabase.from('offers').delete().eq('id', id)
   }
 
-  setShowForm(false)
-  setEditOffer(null)
-  // Recarrega em segundo plano sem bloquear a UI
-  loadOffers()
-}
-async function handleToggle(offer: OfferWithStats) {
-  if (!offer.active && atLimit) return
-  // Atualiza local imediatamente
-  setOffers(prev => prev.map(o => o.id === offer.id ? { ...o, active: !o.active } : o))
-  await supabase.from('offers').update({ active: !offer.active }).eq('id', offer.id)
-}
-
-async function handleDelete(id: string) {
-  if (!confirm('Excluir esta oferta?')) return
-  // Remove local imediatamente
-  setOffers(prev => prev.filter(o => o.id !== id))
-  await supabase.from('offers').delete().eq('id', id)
-}
+  async function handleToggle(offer: OfferWithStats) {
+    if (!offer.active && atLimit) return
+    setOffers(prev => prev.map(o => o.id === offer.id ? { ...o, active: !o.active } : o))
+    await supabase.from('offers').update({ active: !offer.active }).eq('id', offer.id)
+  }
 
   async function saveLogo() {
     if (!market?.id) return
@@ -115,9 +130,6 @@ async function handleDelete(id: string) {
       await refreshMarket()
     }
   }
-
-  const totalViews = offers.reduce((a, o) => a + ((o as any).views || 0), 0)
-  const totalSaves = offers.reduce((a, o) => a + ((o as any).saves || 0), 0)
 
   if (showForm || editOffer) {
     return (
@@ -139,25 +151,16 @@ async function handleDelete(id: string) {
     )
   }
 
-if (!market) {
-    return <MarketOnboarding onCreated={refreshMarket} />
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
 
-        {/* Header com logo editável */}
+        {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm p-4">
           <div className="flex items-center gap-4">
             <div className="relative flex-shrink-0">
               {market.logo_url ? (
-                <img
-                  src={market.logo_url}
-                  alt={market.name}
-                  className="w-16 h-16 rounded-xl object-cover border border-gray-200"
-                  onError={e => (e.currentTarget.style.display = 'none')}
-                />
+                <img src={market.logo_url} alt={market.name} className="w-16 h-16 rounded-xl object-cover border border-gray-200" onError={e => (e.currentTarget.style.display = 'none')} />
               ) : (
                 <div className="w-16 h-16 rounded-xl bg-emerald-100 flex items-center justify-center">
                   <Tag className="text-emerald-600" size={26} />
@@ -166,7 +169,6 @@ if (!market) {
               <button
                 onClick={() => { setEditingLogo(true); setLogoInput(market.logo_url || ''); setLogoErr(false) }}
                 className="absolute -bottom-1 -right-1 w-6 h-6 bg-gray-700 hover:bg-gray-900 text-white rounded-full flex items-center justify-center shadow"
-                title="Editar logo"
               >
                 <Pencil size={11} />
               </button>
@@ -198,27 +200,14 @@ if (!market) {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
               />
               {logoInput && !logoErr && (
-                <img
-                  src={logoInput}
-                  alt="Preview"
-                  className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                  onError={() => setLogoErr(true)}
-                />
+                <img src={logoInput} alt="Preview" className="w-14 h-14 rounded-lg object-cover border border-gray-200" onError={() => setLogoErr(true)} />
               )}
-              {logoErr && <p className="text-xs text-red-500">URL inválida ou imagem não carregou.</p>}
-              <p className="text-xs text-gray-400">Hospede em imgur.com, imgbb.com ou similar.</p>
+              {logoErr && <p className="text-xs text-red-500">URL inválida.</p>}
               <div className="flex gap-2">
-                <button
-                  onClick={saveLogo}
-                  disabled={savingLogo}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold disabled:opacity-60"
-                >
+                <button onClick={saveLogo} disabled={savingLogo} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold disabled:opacity-60">
                   <Check size={13} /> {savingLogo ? 'Salvando...' : 'Salvar logo'}
                 </button>
-                <button
-                  onClick={() => setEditingLogo(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-medium"
-                >
+                <button onClick={() => setEditingLogo(false)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-xs font-medium">
                   <X size={13} /> Cancelar
                 </button>
               </div>
@@ -234,44 +223,49 @@ if (!market) {
               {atLimit ? (
                 <>
                   <p className="text-sm font-semibold text-red-700">Limite atingido ({FREE_LIMIT}/{FREE_LIMIT})</p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    Plano gratuito permite até {FREE_LIMIT} ofertas ativas. Faça upgrade para publicar sem limites.
-                  </p>
-                  <a
-                    href="https://www.instagram.com/oferta_do_dia2026/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors"
-                  >
+                  <p className="text-xs text-red-600 mt-0.5">Plano gratuito permite até {FREE_LIMIT} ofertas ativas.</p>
+                  <a href="https://www.instagram.com/oferta_do_dia2026/" target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-white bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg transition-colors">
                     <Crown size={11} /> Contratar Pro — R$&nbsp;69,90/mês
                   </a>
                 </>
               ) : (
                 <p className="text-sm text-amber-700">
                   {FREE_LIMIT - activeOffers.length} oferta{FREE_LIMIT - activeOffers.length !== 1 ? 's' : ''} restante{FREE_LIMIT - activeOffers.length !== 1 ? 's' : ''} no plano gratuito.{' '}
-                  <a href="https://www.instagram.com/oferta_do_dia2026/" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
-                    Upgrade Pro por R$&nbsp;69,90/mês
-                  </a>
+                  <a href="https://www.instagram.com/oferta_do_dia2026/" target="_blank" rel="noopener noreferrer" className="font-semibold underline">Upgrade Pro por R$&nbsp;69,90/mês</a>
                 </p>
               )}
             </div>
           </div>
         )}
 
-        {/* Stats */}
+        {/* Métricas */}
         <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'Ativas', value: activeOffers.length, icon: <Tag size={15} className="text-emerald-500" /> },
-            { label: 'Views', value: totalViews, icon: <Eye size={15} className="text-blue-500" /> },
-            { label: 'Salvos', value: totalSaves, icon: <Heart size={15} className="text-pink-500" /> },
-          ].map(s => (
-            <div key={s.label} className="bg-white rounded-xl p-3 shadow-sm text-center">
-              <div className="flex justify-center mb-1">{s.icon}</div>
-              <p className="text-2xl font-bold text-gray-900">{s.value}</p>
-              <p className="text-xs text-gray-500">{s.label}</p>
-            </div>
-          ))}
+          <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+            <div className="flex justify-center mb-1"><Tag size={15} className="text-emerald-500" /></div>
+            <p className="text-2xl font-bold text-gray-900">{activeOffers.length}</p>
+            <p className="text-xs text-gray-500">Ofertas ativas</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+            <div className="flex justify-center mb-1"><ShoppingBag size={15} className="text-blue-500" /></div>
+            <p className="text-2xl font-bold text-gray-900">{shareCount}</p>
+            <p className="text-xs text-gray-500">Itens na lista</p>
+          </div>
+          <div className="bg-white rounded-xl p-3 shadow-sm text-center">
+            <div className="flex justify-center mb-1"><TrendingUp size={15} className="text-emerald-600" /></div>
+            <p className="text-lg font-bold text-emerald-600">
+              {salesPotential > 0 ? `R$\u00a0${salesPotential.toFixed(0)}` : 'R$\u00a00'}
+            </p>
+            <p className="text-xs text-gray-500">Vendas em potencial</p>
+          </div>
         </div>
+
+        {/* Vendas em potencial explicação */}
+        {salesPotential > 0 && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-xs text-emerald-700">
+            💡 <strong>Vendas em potencial</strong> representa o valor total dos seus produtos que foram compartilhados via WhatsApp pelos consumidores.
+          </div>
+        )}
 
         {/* Botão Nova oferta */}
         {!atLimit ? (
@@ -282,12 +276,8 @@ if (!market) {
             <Plus size={17} /> Nova oferta
           </button>
         ) : (
-          <a
-            href="https://www.instagram.com/oferta_do_dia2026/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors"
-          >
+          <a href="https://www.instagram.com/oferta_do_dia2026/" target="_blank" rel="noopener noreferrer"
+            className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-colors">
             <Crown size={17} /> Fazer upgrade para publicar mais
           </a>
         )}
@@ -319,23 +309,15 @@ if (!market) {
                   <button
                     onClick={() => handleToggle(offer)}
                     disabled={!offer.active && atLimit}
-                    className={`text-xs px-2 py-1 rounded-full font-medium transition-colors disabled:opacity-40 ${
-                      offer.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                    }`}
+                    className={`text-xs px-2 py-1 rounded-full font-medium transition-colors disabled:opacity-40 ${offer.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}
                   >
                     {offer.active ? 'Ativa' : 'Inativa'}
                   </button>
                   <div className="flex gap-1">
-                    <button
-                      onClick={() => { setEditOffer(offer); setShowForm(false) }}
-                      className="text-xs text-blue-500 hover:text-blue-700 px-1"
-                    >
+                    <button onClick={() => { setEditOffer(offer); setShowForm(false) }} className="text-xs text-blue-500 hover:text-blue-700 px-1">
                       Editar
                     </button>
-                    <button
-                      onClick={() => handleDelete(offer.id)}
-                      className="text-xs text-red-400 hover:text-red-600 px-1"
-                    >
+                    <button onClick={() => handleDelete(offer.id)} className="text-xs text-red-400 hover:text-red-600 px-1">
                       <Trash2 size={12} />
                     </button>
                   </div>
