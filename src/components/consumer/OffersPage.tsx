@@ -272,7 +272,7 @@ export function OffersPage() {
                         isInCart(offer.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {isInCart(offer.id) ? '✓ Na lista' : '+ Lista'}
+                      {isInCart(offer.id) ? '✓ Na lista'}
                     </button>
                   </div>
                 </div>
