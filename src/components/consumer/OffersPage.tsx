@@ -115,7 +115,8 @@ export function OffersPage() {
     ).join('\n')
 
     const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-    window.open(`https://wa.me/?text=${encodeURIComponent(`🛒 Minha lista de compras:\n\n${text}\n\n💰 Total: R$ ${total.toFixed(2)}\n\nOfertas via Oferta do Dia`)}`)
+     const msg = '🛒 Minha lista de compras:\n\n' + text + '\n\n💰 Total: R$ ' + total.toFixed(2) + '\n\nOfertas via Oferta do Dia'
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg))
   }
 
   const filtered = offers.filter(o => {
