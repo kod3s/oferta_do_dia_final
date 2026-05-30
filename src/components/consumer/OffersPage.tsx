@@ -2,14 +2,19 @@ import { useState, useEffect } from 'react'
 import { useApp } from '../../context/AppContext'
 import { supabase } from '../../services/supabase'
 import type { Offer, Market } from '../../types'
-import { Search, MapPin, Heart, Eye, Tag, ImageIcon, ShoppingCart, Instagram } from 'lucide-react'
+import { Search, Heart, Eye, Tag, ImageIcon, ShoppingCart, Instagram, Plus, Minus, X } from 'lucide-react'
 
 interface OfferCard extends Offer {
   views: number
   saves: number
   market_name?: string
   market_logo?: string | null
-  markets?: Pick<Market, 'name'>
+  markets?: { name: string; logo_url?: string | null }
+}
+
+interface CartItem {
+  offer: OfferCard
+  qty: number
 }
 
 const CATEGORIES = ['Todos', 'Hortifruti', 'Carnes', 'Laticínios', 'Bebidas', 'Mercearia', 'Limpeza', 'Higiene']
@@ -18,18 +23,13 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
   const [error, setError] = useState(false)
   if (src && !error) {
     return (
-      <img
-        src={src}
-        alt={name}
-        className="w-full h-36 object-cover"
-        onError={() => setError(true)}
-      />
+      <img src={src} alt={name} className="w-full h-36 object-cover" onError={() => setError(true)} />
     )
   }
   return (
     <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
       <ImageIcon size={28} />
-      <span className="text-xs mt-1 text-gray-300">sem imagem</span>
+      <span className="text-xs mt-1">sem imagem</span>
     </div>
   )
 }
@@ -37,14 +37,7 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
 function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
   const [error, setError] = useState(false)
   if (src && !error) {
-    return (
-      <img
-        src={src}
-        alt={name || ''}
-        className="w-5 h-5 rounded-full object-cover border border-gray-200"
-        onError={() => setError(true)}
-      />
-    )
+    return <img src={src} alt={name || ''} className="w-5 h-5 rounded-full object-cover border border-gray-200" onError={() => setError(true)} />
   }
   return <Tag size={12} className="text-gray-400" />
 }
@@ -52,76 +45,71 @@ function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
 export function OffersPage() {
   const { profile } = useApp()
   const [offers, setOffers] = useState<OfferCard[]>([])
-  const [saved, setSaved] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Todos')
   const [loading, setLoading] = useState(true)
-  const [shoppingList, setShoppingList] = useState<OfferCard[]>([])
+  const [cart, setCart] = useState<CartItem[]>([])
   const [showList, setShowList] = useState(false)
 
   async function loadOffers() {
     setLoading(true)
     try {
-    const today = new Date().toISOString().split('T')[0]
-    const { data } = await supabase
-      .from('offers')
-      .select('*, markets(name, logo_url)')
-      .eq('active', true)
-      .or(`valid_until.is.null,valid_until.gte.${today}`)
-      .order('created_at', { ascending: false })
+      const today = new Date().toISOString().split('T')[0]
+      const { data } = await supabase
+        .from('offers')
+        .select('*, markets(name, logo_url)')
+        .eq('active', true)
+        .or(`valid_until.is.null,valid_until.gte.${today}`)
+        .order('created_at', { ascending: false })
       setOffers((data || []) as OfferCard[])
     } finally {
       setLoading(false)
     }
   }
 
-  async function loadSaved() {
-    if (!profile?.id) return
-    const { data } = await supabase
-      .from('saved_offers')
-      .select('offer_id')
-      .eq('user_id', profile.id)
-    if (data) setSaved(new Set(data.map(d => d.offer_id)))
+  useEffect(() => { loadOffers() }, [])
+
+  function getMarketName(offer: OfferCard) {
+    return (offer.markets as any)?.name || offer.market_name || 'Mercado'
   }
 
-  useEffect(() => {
-    loadOffers()
-    loadSaved()
-  }, [profile?.id])
-
-  async function toggleSave(offerId: string) {
-    if (!profile?.id) return
-    if (saved.has(offerId)) {
-      await supabase.from('saved_offers').delete()
-        .eq('offer_id', offerId).eq('user_id', profile.id)
-      setSaved(s => { const n = new Set(s); n.delete(offerId); return n })
-    } else {
-      await supabase.from('saved_offers').insert({ offer_id: offerId, user_id: profile.id })
-      setSaved(s => new Set([...s, offerId]))
-    }
-  }
-
-  async function recordView(offerId: string) {
-    await supabase.from('offer_views').insert({ offer_id: offerId })
+  function getMarketLogo(offer: OfferCard) {
+    return (offer.markets as any)?.logo_url || offer.market_logo || null
   }
 
   function toggleCart(offer: OfferCard) {
-    setShoppingList(list => {
-      const exists = list.find(o => o.id === offer.id)
-      if (exists) return list.filter(o => o.id !== offer.id)
-      return [...list, offer]
+    setCart(prev => {
+      const exists = prev.find(i => i.offer.id === offer.id)
+      if (exists) return prev.filter(i => i.offer.id !== offer.id)
+      return [...prev, { offer, qty: 1 }]
     })
+  }
+
+  function setQty(offerId: string, qty: number) {
+    if (qty < 1) {
+      setCart(prev => prev.filter(i => i.offer.id !== offerId))
+      return
+    }
+    setCart(prev => prev.map(i => i.offer.id === offerId ? { ...i, qty } : i))
+  }
+
+  function isInCart(offerId: string) {
+    return cart.some(i => i.offer.id === offerId)
   }
 
   const filtered = offers.filter(o => {
     const matchSearch = !search ||
       o.name.toLowerCase().includes(search.toLowerCase()) ||
-      (o.market_name || '').toLowerCase().includes(search.toLowerCase())
+      getMarketName(o).toLowerCase().includes(search.toLowerCase())
     const matchCat = category === 'Todos' || (o.category || '') === category
     return matchSearch && matchCat
   })
 
-  const totalList = shoppingList.reduce((a, o) => a + Number(o.price), 0)
+  const totalList = cart.reduce((a, i) => a + Number(i.offer.price) * i.qty, 0)
+
+  async function recordView(offerId: string) {
+    await supabase.from('offer_views').insert({ offer_id: offerId })
+  }
 
   if (showList) {
     return (
@@ -131,32 +119,55 @@ export function OffersPage() {
             ← Voltar
           </button>
           <h2 className="text-lg font-bold text-gray-900 mb-4">Minha lista de compras</h2>
-          {shoppingList.length === 0 ? (
+          {cart.length === 0 ? (
             <p className="text-center text-gray-400 py-10 text-sm">Nenhum item na lista.</p>
           ) : (
             <>
               <div className="space-y-2 mb-4">
-                {shoppingList.map(o => (
-                  <div key={o.id} className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm">
-                    <div className="flex-1">
-                      <p className="font-semibold text-sm text-gray-900">{o.name}</p>
-                      <p className="text-xs text-gray-500">{o.market_name}</p>
+                {cart.map(({ offer, qty }) => (
+                  <div key={offer.id} className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 truncate">{offer.name}</p>
+                      <p className="text-xs text-gray-500">{getMarketName(offer)}</p>
+                      <p className="text-xs text-emerald-600 font-semibold mt-0.5">
+                        R$ {(Number(offer.price) * qty).toFixed(2)}
+                        <span className="text-gray-400 font-normal ml-1">({qty}x R$ {Number(offer.price).toFixed(2)})</span>
+                      </p>
                     </div>
-                    <p className="font-bold text-emerald-600 text-sm">R$ {Number(o.price).toFixed(2)}</p>
-                    <button onClick={() => toggleCart(o)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                    {/* Controle de quantidade */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setQty(offer.id, qty - 1)}
+                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                      >
+                        <Minus size={12} />
+                      </button>
+                      <span className="text-sm font-semibold w-5 text-center">{qty}</span>
+                      <button
+                        onClick={() => setQty(offer.id, qty + 1)}
+                        className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
+                    <button onClick={() => toggleCart(offer)} className="text-red-400 hover:text-red-600 p-1">
+                      <X size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center mb-3">
                 <p className="text-sm text-gray-600">Total estimado</p>
                 <p className="text-2xl font-bold text-emerald-600">R$ {totalList.toFixed(2)}</p>
               </div>
               <button
                 onClick={() => {
-                  const text = shoppingList.map(o => `• ${o.name} — R$ ${Number(o.price).toFixed(2)} (${o.market_name})`).join('\n')
-                  window.open(`https://wa.me/?text=${encodeURIComponent(`Minha lista de compras:\n${text}\n\nTotal: R$ ${totalList.toFixed(2)}\n\nOfertas via ofertasdodia.vercel.app`)}`)
+                  const text = cart.map(({ offer, qty }) =>
+                    `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
+                  ).join('\n')
+                  window.open(`https://wa.me/?text=${encodeURIComponent(`🛒 Minha lista de compras:\n\n${text}\n\n💰 Total: R$ ${totalList.toFixed(2)}\n\nOfertas via Oferta do Dia`)}`)
                 }}
-                className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
+                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition-colors"
               >
                 Compartilhar no WhatsApp
               </button>
@@ -189,9 +200,7 @@ export function OffersPage() {
               key={cat}
               onClick={() => setCategory(cat)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                category === cat
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-white text-gray-600 border border-gray-200'
+                category === cat ? 'bg-emerald-500 text-white' : 'bg-white text-gray-600 border border-gray-200'
               }`}
             >
               {cat}
@@ -199,14 +208,14 @@ export function OffersPage() {
           ))}
         </div>
 
-        {/* Shopping list FAB */}
-        {shoppingList.length > 0 && (
+        {/* Cart FAB */}
+        {cart.length > 0 && (
           <button
             onClick={() => setShowList(true)}
             className="fixed bottom-6 right-4 bg-emerald-500 text-white rounded-full px-4 py-3 shadow-lg flex items-center gap-2 text-sm font-semibold z-50"
           >
             <ShoppingCart size={16} />
-            {shoppingList.length} {shoppingList.length === 1 ? 'item' : 'itens'}
+            {cart.length} {cart.length === 1 ? 'item' : 'itens'} · R$ {totalList.toFixed(2)}
           </button>
         )}
 
@@ -228,15 +237,14 @@ export function OffersPage() {
               >
                 <div className="relative">
                   <ProductImage src={offer.image_url} name={offer.name} />
+                  {/* Coração = adicionar à lista */}
                   <button
-                    onClick={e => { e.stopPropagation(); toggleSave(offer.id) }}
+                    onClick={e => { e.stopPropagation(); toggleCart(offer) }}
                     className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow ${
-                      saved.has(offer.id)
-                        ? 'bg-pink-500 text-white'
-                        : 'bg-white/80 text-gray-400'
+                      isInCart(offer.id) ? 'bg-pink-500 text-white' : 'bg-white/80 text-gray-400'
                     }`}
                   >
-                    <Heart size={14} fill={saved.has(offer.id) ? 'currentColor' : 'none'} />
+                    <Heart size={14} fill={isInCart(offer.id) ? 'currentColor' : 'none'} />
                   </button>
                 </div>
                 <div className="p-3">
@@ -246,8 +254,8 @@ export function OffersPage() {
                     {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/{offer.unit}</span>}
                   </p>
                   <div className="flex items-center gap-1 mt-1.5">
-                    <MarketLogo src={(offer.markets as any)?.logo_url} name={(offer.markets as any)?.name} />
-                    <span className="text-xs text-gray-500 truncate">{(offer.markets as any)?.name}</span>
+                    <MarketLogo src={getMarketLogo(offer)} name={getMarketName(offer)} />
+                    <span className="text-xs text-gray-500 truncate">{getMarketName(offer)}</span>
                   </div>
                   {offer.valid_until && (
                     <p className="text-xs text-gray-400 mt-1">
@@ -256,17 +264,15 @@ export function OffersPage() {
                   )}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Eye size={11} /> {offer.views || 0}
+                      <Eye size={11} /> {(offer as any).views || 0}
                     </span>
                     <button
                       onClick={e => { e.stopPropagation(); toggleCart(offer) }}
                       className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${
-                        shoppingList.find(o => o.id === offer.id)
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-gray-100 text-gray-600'
+                        isInCart(offer.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
                       }`}
                     >
-                      {shoppingList.find(o => o.id === offer.id) ? '✓ Na lista' : '+ Lista'}
+                      {isInCart(offer.id) ? '✓ Na lista' : '+ Lista'}
                     </button>
                   </div>
                 </div>
