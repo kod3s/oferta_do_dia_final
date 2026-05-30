@@ -266,14 +266,6 @@ export function OffersPage() {
                     <span className="text-xs text-gray-400 flex items-center gap-1">
                       <Eye size={11} /> {(offer as any).views || 0}
                     </span>
-                    <button
-                      onClick={e => { e.stopPropagation(); toggleCart(offer) }}
-                      className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${
-                        isInCart(offer.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
-                      }`}
-                    >
-                      {isInCart(offer.id) ? '✓ Na lista'}
-                    </button>
                   </div>
                 </div>
               </div>
