@@ -98,7 +98,6 @@ export function OffersPage() {
   }
 
   async function shareWhatsApp() {
-    // Registrar shares por mercado antes de abrir o WhatsApp
     const shareInserts = cart.map(({ offer, qty }) => ({
       market_id: getMarketId(offer),
       offer_id: offer.id,
@@ -109,6 +108,16 @@ export function OffersPage() {
     if (shareInserts.length > 0) {
       await supabase.from('whatsapp_shares').insert(shareInserts)
     }
+
+    const lines = cart.map(({ offer, qty }) =>
+      '• ' + offer.name + ' (' + getMarketName(offer) + ') — ' +
+      qty + 'x R$ ' + Number(offer.price).toFixed(2) +
+      ' = R$ ' + (Number(offer.price) * qty).toFixed(2)
+    )
+    const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
+    const msg = '🛒 Minha lista de compras:\n\n' + lines.join('\n') + '\n\n💰 Total: R$ ' + total.toFixed(2) + '\n\nOfertas via Oferta do Dia'
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg))
+  }
 
     const text = cart.map(({ offer, qty }) =>
       `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
