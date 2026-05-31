@@ -21,7 +21,7 @@ const CATEGORIES = ['Todos', 'Hortifruti', 'Carnes', 'Laticínios', 'Bebidas', '
 function ProductImage({ src, name }: { src?: string | null; name: string }) {
   const [error, setError] = useState(false)
   if (src && !error)
-    return <img src={src} alt={name} className="w-full h-36 object-cover" onError={() => setError(true)} />
+    return <img src={src} alt={name} className=className="w-full h-36 object-contain" onError={() => setError(true)} />
   return (
     <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
       <ImageIcon size={28} />
@@ -262,7 +262,7 @@ export function OffersPage() {
                   )}
                   <div className="flex items-center mt-2">
                     <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Eye size={11} /> {(offer as any).views || 0}
+                     }
                     </span>
                   </div>
                 </div>
