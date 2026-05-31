@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useApp } from '../../context/AppContext'
 import { supabase } from '../../services/supabase'
 import type { Offer } from '../../types'
 import { Search, Heart, Eye, Tag, ImageIcon, ShoppingCart, Instagram, Plus, Minus, X } from 'lucide-react'
@@ -9,7 +8,7 @@ interface OfferCard extends Offer {
   saves: number
   market_name?: string
   market_logo?: string | null
-  markets?: { name: string; logo_url?: string | null; id?: string }
+  markets?: { id: string; name: string; logo_url?: string | null }
 }
 
 interface CartItem {
@@ -54,7 +53,7 @@ export function OffersPage() {
         .from('offers')
         .select('*, markets(id, name, logo_url)')
         .eq('active', true)
-        .or(`valid_until.is.null,valid_until.gte.${today}`)
+        .or('valid_until.is.null,valid_until.gte.' + today)
         .order('created_at', { ascending: false })
       setOffers((data || []) as OfferCard[])
     } finally {
@@ -98,34 +97,27 @@ export function OffersPage() {
   }
 
   async function shareWhatsApp() {
-    const shareInserts = cart.map(({ offer, qty }) => ({
-      market_id: getMarketId(offer),
-      offer_id: offer.id,
-      quantity: qty,
-      unit_price: Number(offer.price),
-    })).filter(s => s.market_id)
+    const shareInserts = cart.map(function(item) {
+      return {
+        market_id: getMarketId(item.offer),
+        offer_id: item.offer.id,
+        quantity: item.qty,
+        unit_price: Number(item.offer.price),
+      }
+    }).filter(function(s) { return s.market_id })
 
     if (shareInserts.length > 0) {
       await supabase.from('whatsapp_shares').insert(shareInserts)
     }
 
-    const lines = cart.map(({ offer, qty }) =>
-      '• ' + offer.name + ' (' + getMarketName(offer) + ') — ' +
-      qty + 'x R$ ' + Number(offer.price).toFixed(2) +
-      ' = R$ ' + (Number(offer.price) * qty).toFixed(2)
-    )
-    const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-    const msg = '🛒 Minha lista de compras:\n\n' + lines.join('\n') + '\n\n💰 Total: R$ ' + total.toFixed(2) + '\n\nOfertas via Oferta do Dia'
+    var lines = cart.map(function(item) {
+      var subtotal = (Number(item.offer.price) * item.qty).toFixed(2)
+      return '• ' + item.offer.name + ' (' + getMarketName(item.offer) + ') — ' + item.qty + 'x R$ ' + Number(item.offer.price).toFixed(2) + ' = R$ ' + subtotal
+    })
+
+    var total = cart.reduce(function(a, item) { return a + Number(item.offer.price) * item.qty }, 0)
+    var msg = '🛒 Minha lista de compras:\n\n' + lines.join('\n') + '\n\n💰 Total: R$ ' + total.toFixed(2) + '\n\nOfertas via Oferta do Dia'
     window.open('https://wa.me/?text=' + encodeURIComponent(msg))
-  }
-
-    const text = cart.map(({ offer, qty }) =>
-      `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
-    ).join('\n')
-
-    const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-     const msg = '🛒 Minha lista de compras:\n\n' + text + '\n\n💰 Total: R$ ' + total.toFixed(2) + '\n\nOfertas via Oferta do Dia'
-  window.open('https://wa.me/?text=' + encodeURIComponent(msg))
   }
 
   const filtered = offers.filter(o => {
@@ -212,9 +204,7 @@ export function OffersPage() {
             <button
               key={cat}
               onClick={() => setCategory(cat)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-                category === cat ? 'bg-emerald-500 text-white' : 'bg-white text-gray-600 border border-gray-200'
-              }`}
+              className={'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ' + (category === cat ? 'bg-emerald-500 text-white' : 'bg-white text-gray-600 border border-gray-200')}
             >
               {cat}
             </button>
@@ -250,9 +240,7 @@ export function OffersPage() {
                   <ProductImage src={offer.image_url} name={offer.name} />
                   <button
                     onClick={e => { e.stopPropagation(); toggleCart(offer) }}
-                    className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow ${
-                      isInCart(offer.id) ? 'bg-pink-500 text-white' : 'bg-white/80 text-gray-400'
-                    }`}
+                    className={'absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors shadow ' + (isInCart(offer.id) ? 'bg-pink-500 text-white' : 'bg-white/80 text-gray-400')}
                   >
                     <Heart size={14} fill={isInCart(offer.id) ? 'currentColor' : 'none'} />
                   </button>
@@ -272,6 +260,10 @@ export function OffersPage() {
                       Até {new Date(offer.valid_until + 'T12:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   )}
+                  <div className="flex items-center mt-2">
+                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                      <Eye size={11} /> {(offer as any).views || 0}
+                    </span>
                   </div>
                 </div>
               </div>
