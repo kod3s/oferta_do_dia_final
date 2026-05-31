@@ -96,18 +96,30 @@ export function OffersPage() {
     await supabase.from('offer_views').insert({ offer_id: offerId })
   }
 
-  async function shareWhatsApp() {
-    const shareInserts = cart.map(function(item) {
-      return {
-        market_id: getMarketId(item.offer),
-        offer_id: item.offer.id,
-        quantity: item.qty,
-        unit_price: Number(item.offer.price),
+  function shareWhatsApp() {
+      var lines = cart.map(function(item) {
+        var subtotal = (Number(item.offer.price) * item.qty).toFixed(2)
+        return '• ' + item.offer.name + ' (' + getMarketName(item.offer) + ') — ' + item.qty + 'x R$ ' + Number(item.offer.price).toFixed(2) + ' = R$ ' + subtotal
+      })
+      var total = cart.reduce(function(a, item) { return a + Number(item.offer.price) * item.qty }, 0)
+      var msg = '🛒 Minha lista de compras:\n\n' + lines.join('\n') + '\n\n💰 Total: R$ ' + total.toFixed(2) + '\n\nOfertas via Oferta do Dia'
+      
+      // Abre WhatsApp imediatamente (antes do await, para não ser bloqueado)
+      window.open('https://wa.me/?text=' + encodeURIComponent(msg))
+      
+      // Registra em segundo plano
+      var shareInserts = cart.map(function(item) {
+        return {
+          market_id: getMarketId(item.offer),
+          offer_id: item.offer.id,
+          quantity: item.qty,
+          unit_price: Number(item.offer.price),
+        }
+      }).filter(function(s) { return s.market_id })
+      
+      if (shareInserts.length > 0) {
+        supabase.from('whatsapp_shares').insert(shareInserts)
       }
-    }).filter(function(s) { return s.market_id })
-
-    if (shareInserts.length > 0) {
-      await supabase.from('whatsapp_shares').insert(shareInserts)
     }
 
     var lines = cart.map(function(item) {
