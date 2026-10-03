@@ -24,7 +24,7 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
     return <img src={src} alt={name} className="w-full h-48 sm:h-52 object-contain p-2" onError={() => setError(true)} />
   return (
     <div className="w-full h-48 sm:h-52 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
-      <ImageIcon size={38} />
+      <ImageIcon size={36} />
       <span className="text-sm mt-1">sem imagem</span>
     </div>
   )
@@ -33,8 +33,8 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
 function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
   const [error, setError] = useState(false)
   if (src && !error)
-    return <img src={src} alt={name || ''} className="w-7 h-7 rounded-full object-cover border border-gray-200" onError={() => setError(true)} />
-  return <Tag size={16} className="text-gray-400" />
+    return <img src={src} alt={name || ''} className="w-6 h-6 rounded-full object-cover border border-gray-200" onError={() => setError(true)} />
+  return <Tag size={14} className="text-gray-400" />
 }
 
 export function OffersPage() {
@@ -143,7 +143,7 @@ export function OffersPage() {
                 {cart.map(({ offer, qty }) => (
                   <div key={offer.id} className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm">
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-base sm:text-lg text-gray-900 truncate">{offer.name}</p>
+                      <p className="font-semibold text-sm text-gray-900 truncate">{offer.name}</p>
                       <p className="text-xs text-gray-500">{getMarketName(offer)}</p>
                       <p className="text-xs text-emerald-600 font-semibold mt-0.5">
                         R$ {(Number(offer.price) * qty).toFixed(2)}
@@ -184,7 +184,7 @@ export function OffersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-5 sm:space-y-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 sm:py-6 space-y-5">
 
         <div className="relative">
           <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -192,16 +192,16 @@ export function OffersPage() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Buscar produto ou mercado..."
-            className="w-full pl-11 pr-4 py-4 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            className="w-full pl-12 pr-4 py-4 bg-white border border-gray-200 rounded-2xl text-base focus:outline-none focus:ring-2 focus:ring-emerald-400"
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none pr-4">
+        <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-none pr-4">
           {CATEGORIES.map(cat => (
             <button
               key={cat}
               onClick={() => setCategory(cat)}
-              className={'px-4 py-2.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ' (category === cat ? 'bg-emerald-500 text-white' : 'bg-white text-gray-600 border border-gray-200')}
+              className={'px-4 py-2.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ' + (category === cat ? 'bg-emerald-500 text-white' : 'bg-white text-gray-600 border border-gray-200')}
             >
               {cat}
             </button>
@@ -211,7 +211,7 @@ export function OffersPage() {
         {cart.length > 0 && (
           <button
             onClick={() => setShowList(true)}
-            className="fixed bottom-5 right-4 sm:right-6 bg-emerald-500 text-white rounded-full px-5 py-4 shadow-xl flex items-center gap-2 text-base font-bold z-50" z-50"
+            className="fixed bottom-5 right-4 sm:bottom-7 sm:right-7 bg-emerald-500 text-white rounded-full px-5 py-3.5 shadow-xl flex items-center gap-2.5 text-base font-semibold z-50"
           >
             <ShoppingCart size={20} />
             {cart.length} {cart.length === 1 ? 'item' : 'itens'} · R$ {totalList.toFixed(2)}
@@ -226,11 +226,11 @@ export function OffersPage() {
             Nenhuma oferta encontrada.
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
             {filtered.map(offer => (
               <div
                 key={offer.id}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer"
                 onClick={() => recordView(offer.id)}
               >
                 <div className="relative">
@@ -243,14 +243,14 @@ export function OffersPage() {
                   </button>
                 </div>
                 <div className="p-4">
-                  <p className="font-bold text-base sm:text-lg text-gray-900 leading-tight line-clamp-2">{offer.name}</p>
-                  <p className="text-emerald-600 font-extrabold text-xl sm:text-2xl mt-2">
+                  <p className="font-semibold text-base text-gray-900 leading-snug line-clamp-2">{offer.name}</p>
+                  <p className="text-emerald-600 font-bold text-xl mt-2">
                     R$ {Number(offer.price).toFixed(2)}
                     {offer.unit && <span className="text-sm text-gray-400 font-normal ml-1">/{offer.unit}</span>}
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-1.5 mt-2">
                     <MarketLogo src={getMarketLogo(offer)} name={getMarketName(offer)} />
-                    <span className="text-sm text-gray-600 font-medium truncate">{getMarketName(offer)}</span>
+                    <span className="text-sm text-gray-500 truncate">{getMarketName(offer)}</span>
                   </div>
                   {offer.valid_until && (
                     <p className="text-sm text-gray-400 mt-1.5">
@@ -268,9 +268,9 @@ export function OffersPage() {
             href="https://www.instagram.com/oferta_do_dia2026/"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-gray-400 hover:text-pink-500 transition-colors"
+            className="inline-flex items-center gap-2 text-xs text-gray-400 hover:text-pink-500 transition-colors"
           >
-            <Instagram size={18} />
+            <Instagram size={14} />
             @oferta_do_dia2026
           </a>
         </div>
