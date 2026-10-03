@@ -256,14 +256,18 @@ export function AdminPanel() {
   // ── Ofertas CRUD ──
 
   async function saveOffer(data: Partial<Offer>) {
+    // `markets` é uma relação retornada pelo SELECT e não uma coluna da tabela `offers`.
+    // Removemos esse campo antes de enviar os dados ao Supabase.
+    const { markets: _markets, ...offerData } = data as Partial<Offer> & { markets?: unknown }
+
     if (editingOffer) {
-      const { error } = await supabase.from('offers').update(data).eq('id', editingOffer.id)
+      const { error } = await supabase.from('offers').update(offerData).eq('id', editingOffer.id)
       if (error) throw error
       // Recarrega para pegar dados do mercado atualizados
       await load()
       flash('Oferta atualizada!')
     } else {
-      const { error } = await supabase.from('offers').insert({ ...data, active: true })
+      const { error } = await supabase.from('offers').insert({ ...offerData, active: true })
       if (error) throw error
       await load()
       flash('Oferta publicada!')
