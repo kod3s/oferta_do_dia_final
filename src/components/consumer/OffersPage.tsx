@@ -45,7 +45,7 @@ function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
   const [error, setError] = useState(false)
   if (src && !error)
     return <img src={src} alt={name || ''} className="w-5 h-5 rounded-full object-cover border border-gray-200" onError={() => setError(true)} />
-  return <Tag size={12} className="text-gray-400" />
+  return <Tag size={14} className="text-gray-400" />
 }
 
 export function OffersPage() {
@@ -116,7 +116,7 @@ export function OffersPage() {
       return `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${sub}`
     })
     const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-    const msg = `🛒 Minha lista de compras:\n\n${lines.join('\n')}\n\n💰 Total: R$ ${total.toFixed(2)}\n\nOfertas via Oferta do Dia`
+    const msg = ` Minha lista de compras:\n\n${lines.join('\n')}\n\n Total: R$ ${total.toFixed(2)}\n\nOfertas via Oferta do Dia`
     window.open('https://wa.me/?text=' + encodeURIComponent(msg))
     const inserts = cart
       .map(({ offer, qty }) => ({ market_id: getMarketId(offer), offer_id: offer.id, quantity: qty, unit_price: Number(offer.price) }))
