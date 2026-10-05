@@ -118,7 +118,7 @@ function OfferForm({ initial, markets, onSave, onCancel }: {
   const defaultDate = () => {
     const d = nowBrasilia()
     d.setDate(d.getDate() + 1)
-    d.setHours(8, 0, 0, 0)
+    d.setHours(6, 0, 0, 0)
     return toDatetimeLocal(d)
   }
 
