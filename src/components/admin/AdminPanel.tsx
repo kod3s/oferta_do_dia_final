@@ -38,7 +38,7 @@ function brasiliaToISO(local: string): string {
   return utc.toISOString()
 }
 
-/*function statusLabel(publishedAt: string): { label: string; color: string } {
+function statusLabel(publishedAt: string): { label: string; color: string } {
   const pub = new Date(publishedAt)
   const now = nowBrasilia()
   const expires = new Date(pub.getTime() + 24 * 60 * 60 * 1000)
@@ -48,7 +48,7 @@ function brasiliaToISO(local: string): string {
   const h = Math.floor(diff / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
   return { label: `${h}h ${m}m restantes`, color: 'bg-emerald-100 text-emerald-700' }
-}*/
+}
 
 // ── Formulário de Mercado ─────────────────────────────────────
 
