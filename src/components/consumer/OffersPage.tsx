@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../services/supabase'
-import type { Offer } from '../../types'
-import { Search, Heart, Tag, ImageIcon, ShoppingCart, Instagram, Plus, Minus, X } from 'lucide-react'
+import type { Offer, Market } from '../../types'
+import { Search, Heart, Tag, ImageIcon, ShoppingCart, Instagram, Plus, Minus, X, MapPin } from 'lucide-react'
 
 interface OfferCard extends Offer {
-  markets?: { id: string; name: string; logo_url?: string | null }
+  markets?: { id: string; name: string; logo_url?: string | null; city?: string }
 }
 
 interface CartItem {
@@ -25,8 +25,8 @@ function timeLeft(publishedAt: string): string {
   if (diff <= 0) return 'expirada'
   const h = Math.floor(diff / 3600000)
   const m = Math.floor((diff % 3600000) / 60000)
-  if (h > 0) return `${h}h ${m}m restantes`
-  return `${m} min restantes`
+  if (h > 0) return `${h}h ${m}m`
+  return `${m} min`
 }
 
 function ProductImage({ src, name }: { src?: string | null; name: string }) {
@@ -36,7 +36,6 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
   return (
     <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
       <ImageIcon size={28} />
-      <span className="text-xs mt-1">sem imagem</span>
     </div>
   )
 }
@@ -44,42 +43,43 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
 function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
   const [error, setError] = useState(false)
   if (src && !error)
-    return <img src={src} alt={name || ''} className="w-5 h-5 rounded-full object-cover border border-gray-200" onError={() => setError(true)} />
-  return <Tag size={14} className="text-gray-400" />
+    return <img src={src} alt={name || ''} className="w-5 h-5 rounded-full object-cover border border-gray-200 flex-shrink-0" onError={() => setError(true)} />
+  return <Tag size={12} className="text-gray-400 flex-shrink-0" />
 }
 
 export function OffersPage() {
   const [offers, setOffers] = useState<OfferCard[]>([])
+  const [cities, setCities] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('Todos')
+  const [city, setCity] = useState('Todas')
   const [loading, setLoading] = useState(true)
   const [cart, setCart] = useState<CartItem[]>([])
   const [showList, setShowList] = useState(false)
-  const [now, setNow] = useState(nowBrasilia())
-
-  // Atualiza o relógio a cada minuto para o timer
-  useEffect(() => {
-    const interval = setInterval(() => setNow(nowBrasilia()), 60000)
-    return () => clearInterval(interval)
-  }, [])
 
   async function loadOffers() {
     setLoading(true)
     try {
       const current = nowBrasilia()
       const nowIso = current.toISOString()
-      // 24h atrás
       const since = new Date(current.getTime() - 24 * 60 * 60 * 1000).toISOString()
 
       const { data } = await supabase
         .from('offers')
-        .select('*, markets(id, name, logo_url)')
+        .select('*, markets(id, name, logo_url, city)')
         .eq('active', true)
-        .lte('published_at', nowIso)   // já foi publicada
-        .gte('published_at', since)     // há menos de 24h
+        .lte('published_at', nowIso)
+        .gte('published_at', since)
         .order('published_at', { ascending: false })
 
-      setOffers((data || []) as OfferCard[])
+      const list = (data || []) as OfferCard[]
+      setOffers(list)
+
+      // Extrai cidades únicas dos mercados
+      const uniqueCities = Array.from(
+        new Set(list.map(o => (o.markets as any)?.city).filter(Boolean))
+      ).sort() as string[]
+      setCities(uniqueCities)
     } finally {
       setLoading(false)
     }
@@ -87,9 +87,10 @@ export function OffersPage() {
 
   useEffect(() => { loadOffers() }, [])
 
-  function getMarketName(o: OfferCard) { return (o.markets as any)?.name || 'Mercado' }
-  function getMarketLogo(o: OfferCard) { return (o.markets as any)?.logo_url || null }
-  function getMarketId(o: OfferCard): string | null { return (o.markets as any)?.id || o.market_id || null }
+  const getMarketName = (o: OfferCard) => (o.markets as any)?.name || 'Mercado'
+  const getMarketLogo = (o: OfferCard) => (o.markets as any)?.logo_url || null
+  const getMarketCity = (o: OfferCard) => (o.markets as any)?.city || null
+  const getMarketId   = (o: OfferCard): string | null => (o.markets as any)?.id || o.market_id || null
 
   function toggleCart(offer: OfferCard) {
     setCart(prev => {
@@ -104,7 +105,7 @@ export function OffersPage() {
     setCart(prev => prev.map(i => i.offer.id === offerId ? { ...i, qty } : i))
   }
 
-  function isInCart(offerId: string) { return cart.some(i => i.offer.id === offerId) }
+  const isInCart = (id: string) => cart.some(i => i.offer.id === id)
 
   async function recordView(offerId: string) {
     await supabase.from('offer_views').insert({ offer_id: offerId })
@@ -116,7 +117,7 @@ export function OffersPage() {
       return `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${sub}`
     })
     const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-    const msg = ` Minha lista de compras:\n\n${lines.join('\n')}\n\n Total: R$ ${total.toFixed(2)}\n\nOfertas via Oferta do Dia`
+    const msg = `🛒 Minha lista — Oferta do Dia\n\n${lines.join('\n')}\n\n💰 Total: R$ ${total.toFixed(2)}`
     window.open('https://wa.me/?text=' + encodeURIComponent(msg))
     const inserts = cart
       .map(({ offer, qty }) => ({ market_id: getMarketId(offer), offer_id: offer.id, quantity: qty, unit_price: Number(offer.price) }))
@@ -128,17 +129,21 @@ export function OffersPage() {
     const matchSearch = !search ||
       o.name.toLowerCase().includes(search.toLowerCase()) ||
       getMarketName(o).toLowerCase().includes(search.toLowerCase())
-    const matchCat = category === 'Todos' || (o.category || '').trim() === category.trim()
-    return matchSearch && matchCat
+    const matchCat  = category === 'Todos' || (o.category || '').trim() === category.trim()
+    const matchCity = city === 'Todas' || getMarketCity(o) === city
+    return matchSearch && matchCat && matchCity
   })
 
   const totalList = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
 
+  // ── Tela da lista ────────────────────────────────────────────
   if (showList) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-lg mx-auto px-4 py-6">
-          <button onClick={() => setShowList(false)} className="text-sm text-gray-500 mb-4 flex items-center gap-1">← Voltar</button>
+          <button onClick={() => setShowList(false)} className="text-sm text-gray-500 mb-4 flex items-center gap-1">
+            ← Voltar
+          </button>
           <h2 className="text-lg font-bold text-gray-900 mb-4">Minha lista de compras</h2>
           {cart.length === 0 ? (
             <p className="text-center text-gray-400 py-10 text-sm">Nenhum item na lista.</p>
@@ -164,7 +169,9 @@ export function OffersPage() {
                         <Plus size={12} />
                       </button>
                     </div>
-                    <button onClick={() => toggleCart(offer)} className="text-red-400 hover:text-red-600 p-1"><X size={14} /></button>
+                    <button onClick={() => toggleCart(offer)} className="text-red-400 hover:text-red-600 p-1">
+                      <X size={14} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -182,9 +189,12 @@ export function OffersPage() {
     )
   }
 
+  // ── Tela principal ───────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+      <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
+
+        {/* Busca */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -195,6 +205,21 @@ export function OffersPage() {
           />
         </div>
 
+        {/* Filtro de cidade — só aparece se houver mais de uma */}
+        {cities.length > 1 && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <MapPin size={13} className="text-gray-400 flex-shrink-0" />
+            {['Todas', ...cities].map(c => (
+              <button key={c} onClick={() => setCity(c)}
+                className={'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ' +
+                  (city === c ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 border border-gray-200')}>
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Categorias */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
           {CATEGORIES.map(cat => (
             <button key={cat} onClick={() => setCategory(cat)}
@@ -205,6 +230,7 @@ export function OffersPage() {
           ))}
         </div>
 
+        {/* Botão flutuante da lista */}
         {cart.length > 0 && (
           <button onClick={() => setShowList(true)}
             className="fixed bottom-6 right-4 bg-emerald-500 text-white rounded-full px-4 py-3 shadow-lg flex items-center gap-2 text-sm font-semibold z-50">
@@ -213,6 +239,7 @@ export function OffersPage() {
           </button>
         )}
 
+        {/* Grid de ofertas */}
         {loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Carregando ofertas...</div>
         ) : filtered.length === 0 ? (
@@ -224,7 +251,7 @@ export function OffersPage() {
           <div className="grid grid-cols-2 gap-3">
             {filtered.map(offer => (
               <div key={offer.id}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                 onClick={() => recordView(offer.id)}>
                 <div className="relative">
                   <ProductImage src={offer.image_url} name={offer.name} />
@@ -234,7 +261,6 @@ export function OffersPage() {
                       (isInCart(offer.id) ? 'bg-pink-500 text-white' : 'bg-white/80 text-gray-400')}>
                     <Heart size={14} fill={isInCart(offer.id) ? 'currentColor' : 'none'} />
                   </button>
-                  {/* Timer de expiração */}
                   {offer.published_at && (
                     <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
                       ⏱ {timeLeft(offer.published_at)}
@@ -247,10 +273,17 @@ export function OffersPage() {
                     R$ {Number(offer.price).toFixed(2)}
                     {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/{offer.unit}</span>}
                   </p>
-                  <div className="flex items-center gap-1 mt-1.5">
+                  {/* Nome do mercado — fonte maior */}
+                  <div className="flex items-center gap-1.5 mt-2">
                     <MarketLogo src={getMarketLogo(offer)} name={getMarketName(offer)} />
-                    <span className="text-xs text-gray-500 truncate">{getMarketName(offer)}</span>
+                    <span className="text-sm font-medium text-gray-600 truncate">{getMarketName(offer)}</span>
                   </div>
+                  {getMarketCity(offer) && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <MapPin size={10} className="text-gray-300 flex-shrink-0" />
+                      <span className="text-xs text-gray-400 truncate">{getMarketCity(offer)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
