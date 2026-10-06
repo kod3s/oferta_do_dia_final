@@ -18,7 +18,8 @@ export interface Offer {
   price: number
   unit: string
   note?: string
-  valid_until?: string | null
+  published_at: string        // quando entra no ar
+  expires_at?: string         // calculado: published_at + 24h
   active: boolean
   created_at: string
   markets?: Pick<Market, 'id' | 'name' | 'logo_url' | 'city'>
