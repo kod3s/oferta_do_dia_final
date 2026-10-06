@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Analytics } from '@vercel/analytics/react'
 import { useApp } from './context/AppContext'
 import { Navbar } from './components/shared/Navbar'
 import { AuthPage } from './components/shared/AuthPage'
@@ -152,6 +153,7 @@ export default function App() {
         {route === 'admin' && isAdmin && <AdminPanel />}
         {route === 'admin' && !isAdmin && <AuthPage onSuccess={() => navigate('admin')} />}
       </div>
+      <Analytics />
     </div>
   )
 }
