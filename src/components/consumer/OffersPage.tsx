@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../services/supabase'
-import type { Offer, Market } from '../../types'
+import type { Offer } from '../../types'
 import { Search, Heart, Tag, ImageIcon, ShoppingCart, Instagram, Plus, Minus, X, MapPin } from 'lucide-react'
 
-interface OfferCard extends Offer {
-  markets?: { id: string; name: string; logo_url?: string | null; city?: string }
+interface MarketInfo {
+  id: string
+  name: string
+  logo_url?: string | null
+  city?: string | null
+}
+
+interface OfferCard extends Omit<Offer, 'markets'> {
+  markets?: MarketInfo | null
 }
 
 interface CartItem {
@@ -34,7 +41,7 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
   if (src && !error)
     return <img src={src} alt={name} className="w-full h-36 object-contain" onError={() => setError(true)} />
   return (
-    <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex flex-col items-center justify-center text-gray-300">
+    <div className="w-full h-36 bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-gray-300">
       <ImageIcon size={28} />
     </div>
   )
@@ -43,8 +50,10 @@ function ProductImage({ src, name }: { src?: string | null; name: string }) {
 function MarketLogo({ src, name }: { src?: string | null; name?: string }) {
   const [error, setError] = useState(false)
   if (src && !error)
-    return <img src={src} alt={name || ''} className="w-5 h-5 rounded-full object-cover border border-gray-200 flex-shrink-0" onError={() => setError(true)} />
-  return <Tag size={12} className="text-gray-400 flex-shrink-0" />
+    return <img src={src} alt={name || ''} className="w-6 h-6 rounded-full object-cover border border-gray-200 flex-shrink-0" onError={() => setError(true)} />
+  return <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+    <Tag size={10} className="text-emerald-500" />
+  </div>
 }
 
 export function OffersPage() {
@@ -64,21 +73,40 @@ export function OffersPage() {
       const nowIso = current.toISOString()
       const since = new Date(current.getTime() - 24 * 60 * 60 * 1000).toISOString()
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('offers')
-        .select('*, markets(id, name, logo_url, city)')
+        .select(`
+          *,
+          markets (
+            id,
+            name,
+            logo_url,
+            city
+          )
+        `)
         .eq('active', true)
         .lte('published_at', nowIso)
         .gte('published_at', since)
         .order('published_at', { ascending: false })
 
+      if (error) console.error('Erro ao carregar ofertas:', error)
+
       const list = (data || []) as OfferCard[]
       setOffers(list)
 
-      // Extrai cidades únicas dos mercados
+      // Debug — remove depois
+      console.log('Ofertas carregadas:', list.length)
+      console.log('Cidades encontradas:', list.map(o => o.markets?.city))
+
       const uniqueCities = Array.from(
-        new Set(list.map(o => (o.markets as any)?.city).filter(Boolean))
-      ).sort() as string[]
+        new Set(
+          list
+            .map(o => o.markets?.city)
+            .filter((c): c is string => typeof c === 'string' && c.trim() !== '')
+        )
+      ).sort()
+
+      console.log('Cidades únicas:', uniqueCities)
       setCities(uniqueCities)
     } finally {
       setLoading(false)
@@ -87,15 +115,15 @@ export function OffersPage() {
 
   useEffect(() => { loadOffers() }, [])
 
-  const getMarketName = (o: OfferCard) => (o.markets as any)?.name || 'Mercado'
-  const getMarketLogo = (o: OfferCard) => (o.markets as any)?.logo_url || null
-  const getMarketCity = (o: OfferCard) => (o.markets as any)?.city || null
-  const getMarketId   = (o: OfferCard): string | null => (o.markets as any)?.id || o.market_id || null
+  const getMarketName = (o: OfferCard) => o.markets?.name || 'Mercado'
+  const getMarketLogo = (o: OfferCard) => o.markets?.logo_url || null
+  const getMarketCity = (o: OfferCard) => o.markets?.city || null
+  const getMarketId   = (o: OfferCard) => o.markets?.id || o.market_id || null
 
   function toggleCart(offer: OfferCard) {
     setCart(prev => {
-      const exists = prev.find(i => i.offer.id === offer.id)
-      if (exists) return prev.filter(i => i.offer.id !== offer.id)
+      if (prev.find(i => i.offer.id === offer.id))
+        return prev.filter(i => i.offer.id !== offer.id)
       return [...prev, { offer, qty: 1 }]
     })
   }
@@ -112,10 +140,9 @@ export function OffersPage() {
   }
 
   function shareWhatsApp() {
-    const lines = cart.map(({ offer, qty }) => {
-      const sub = (Number(offer.price) * qty).toFixed(2)
-      return `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${sub}`
-    })
+    const lines = cart.map(({ offer, qty }) =>
+      `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
+    )
     const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
     const msg = `🛒 Minha lista — Oferta do Dia\n\n${lines.join('\n')}\n\n💰 Total: R$ ${total.toFixed(2)}`
     window.open('https://wa.me/?text=' + encodeURIComponent(msg))
@@ -129,14 +156,14 @@ export function OffersPage() {
     const matchSearch = !search ||
       o.name.toLowerCase().includes(search.toLowerCase()) ||
       getMarketName(o).toLowerCase().includes(search.toLowerCase())
-    const matchCat  = category === 'Todos' || (o.category || '').trim() === category.trim()
+    const matchCat  = category === 'Todos' || o.category === category
     const matchCity = city === 'Todas' || getMarketCity(o) === city
     return matchSearch && matchCat && matchCity
   })
 
   const totalList = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
 
-  // ── Tela da lista ────────────────────────────────────────────
+  // ── Lista de compras ─────────────────────────────────────────
   if (showList) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -155,23 +182,17 @@ export function OffersPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm text-gray-900 truncate">{offer.name}</p>
                       <p className="text-xs text-gray-500">{getMarketName(offer)}</p>
-                      <p className="text-xs text-emerald-600 font-semibold mt-0.5">
+                      <p className="text-sm text-emerald-600 font-semibold mt-0.5">
                         R$ {(Number(offer.price) * qty).toFixed(2)}
-                        <span className="text-gray-400 font-normal ml-1">({qty}x R$ {Number(offer.price).toFixed(2)})</span>
+                        <span className="text-gray-400 font-normal text-xs ml-1">({qty}x R$ {Number(offer.price).toFixed(2)})</span>
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => setQty(offer.id, qty - 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                        <Minus size={12} />
-                      </button>
+                      <button onClick={() => setQty(offer.id, qty - 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Minus size={12} /></button>
                       <span className="text-sm font-semibold w-5 text-center">{qty}</span>
-                      <button onClick={() => setQty(offer.id, qty + 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
-                        <Plus size={12} />
-                      </button>
+                      <button onClick={() => setQty(offer.id, qty + 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Plus size={12} /></button>
                     </div>
-                    <button onClick={() => toggleCart(offer)} className="text-red-400 hover:text-red-600 p-1">
-                      <X size={14} />
-                    </button>
+                    <button onClick={() => toggleCart(offer)} className="text-red-400 hover:text-red-600 p-1"><X size={14} /></button>
                   </div>
                 ))}
               </div>
@@ -194,7 +215,6 @@ export function OffersPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
 
-        {/* Busca */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -205,8 +225,8 @@ export function OffersPage() {
           />
         </div>
 
-        {/* Filtro de cidade — só aparece se houver mais de uma */}
-        {cities.length > 1 && (
+        {/* Filtro de cidade */}
+        {cities.length > 0 && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             <MapPin size={13} className="text-gray-400 flex-shrink-0" />
             {['Todas', ...cities].map(c => (
@@ -230,7 +250,6 @@ export function OffersPage() {
           ))}
         </div>
 
-        {/* Botão flutuante da lista */}
         {cart.length > 0 && (
           <button onClick={() => setShowList(true)}
             className="fixed bottom-6 right-4 bg-emerald-500 text-white rounded-full px-4 py-3 shadow-lg flex items-center gap-2 text-sm font-semibold z-50">
@@ -239,7 +258,6 @@ export function OffersPage() {
           </button>
         )}
 
-        {/* Grid de ofertas */}
         {loading ? (
           <div className="text-center py-12 text-gray-400 text-sm">Carregando ofertas...</div>
         ) : filtered.length === 0 ? (
@@ -251,7 +269,7 @@ export function OffersPage() {
           <div className="grid grid-cols-2 gap-3">
             {filtered.map(offer => (
               <div key={offer.id}
-                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => recordView(offer.id)}>
                 <div className="relative">
                   <ProductImage src={offer.image_url} name={offer.name} />
@@ -268,21 +286,25 @@ export function OffersPage() {
                   )}
                 </div>
                 <div className="p-3">
-                  <p className="font-semibold text-sm text-gray-900 leading-tight line-clamp-2">{offer.name}</p>
-                  <p className="text-emerald-600 font-bold text-base mt-1">
+                  <p className="font-semibold text-sm text-gray-900 leading-tight line-clamp-2 mb-1">{offer.name}</p>
+                  <p className="text-emerald-600 font-bold text-lg">
                     R$ {Number(offer.price).toFixed(2)}
                     {offer.unit && <span className="text-xs text-gray-400 font-normal ml-1">/{offer.unit}</span>}
                   </p>
-                  {/* Nome do mercado — fonte maior */}
+                  {/* Nome do mercado — tamanho aumentado */}
                   <div className="flex items-center gap-1.5 mt-2">
                     <MarketLogo src={getMarketLogo(offer)} name={getMarketName(offer)} />
-                    <span className="text-sm font-medium text-gray-600 truncate">{getMarketName(offer)}</span>
+                    <span className="text-sm font-semibold text-gray-700 truncate leading-tight">
+                      {getMarketName(offer)}
+                    </span>
                   </div>
                   {getMarketCity(offer) && (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <MapPin size={10} className="text-gray-300 flex-shrink-0" />
-                      <span className="text-xs text-gray-400 truncate">{getMarketCity(offer)}</span>
+                    <div className="flex items-center gap-1 mt-0.5 ml-7">
+                      <span className="text-xs text-gray-400">{getMarketCity(offer)}</span>
                     </div>
+                  )}
+                  {offer.note && (
+                    <p className="text-xs text-gray-400 mt-1 line-clamp-1">{offer.note}</p>
                   )}
                 </div>
               </div>
