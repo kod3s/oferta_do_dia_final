@@ -2,9 +2,41 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../services/supabase'
 import type { Market, Offer } from '../../types'
 import { CATEGORIES, UNITS } from '../../types'
-import { Store, Tag, RefreshCw, Plus, Trash2, Edit2, X, Check, ImageIcon, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import {
+  Store, Tag, RefreshCw, Plus, Trash2, Edit2,
+  X, Check, ImageIcon, ChevronDown, ChevronUp,
+  Clock, Eye, Heart, Share2, TrendingUp, BarChart2
+} from 'lucide-react'
 
-type Tab = 'offers' | 'markets'
+type Tab = 'offers' | 'markets' | 'metrics'
+
+function nowBrasilia(): Date {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+}
+
+function toDatetimeLocal(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function brasiliaToISO(local: string): string {
+  const [datePart, timePart] = local.split('T')
+  const [y, mo, d] = datePart.split('-').map(Number)
+  const [h, mi] = timePart.split(':').map(Number)
+  return new Date(Date.UTC(y, mo-1, d, h+3, mi)).toISOString()
+}
+
+function statusLabel(publishedAt: string): { label: string; color: string } {
+  const pub = new Date(publishedAt)
+  const now = nowBrasilia()
+  const expires = new Date(pub.getTime() + 24 * 60 * 60 * 1000)
+  if (now < pub) return { label: 'Agendada', color: 'bg-blue-100 text-blue-700' }
+  if (now > expires) return { label: 'Expirada', color: 'bg-gray-100 text-gray-500' }
+  const diff = expires.getTime() - now.getTime()
+  const h = Math.floor(diff / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  return { label: `${h}h ${m}m restantes`, color: 'bg-emerald-100 text-emerald-700' }
+}
 
 function ImgPreview({ src, name, className }: { src?: string | null; name: string; className?: string }) {
   const [err, setErr] = useState(false)
@@ -17,38 +49,233 @@ function ImgPreview({ src, name, className }: { src?: string | null; name: strin
   )
 }
 
-function nowBrasilia(): Date {
-  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+// ── Métricas por mercado ──────────────────────────────────────
+
+interface MarketMetrics {
+  market: Market
+  totalViews: number
+  totalShares: number
+  totalOffers: number
+  offers: {
+    id: string
+    name: string
+    image_url?: string | null
+    price: number
+    unit: string
+    views: number
+    shares: number
+    published_at: string
+  }[]
 }
 
-// Formata datetime local para o input datetime-local
-function toDatetimeLocal(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
+function MetricsPanel({ markets }: { markets: Market[] }) {
+  const [data, setData] = useState<MarketMetrics[]>([])
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [period, setPeriod] = useState<7 | 14 | 30>(7)
 
-// Converte datetime-local (horário Brasília) para ISO UTC
-function brasiliaToISO(local: string): string {
-  // local = "2025-05-20T09:00" — interpreta como Brasília (UTC-3)
-  const [datePart, timePart] = local.split('T')
-  const [y, mo, d] = datePart.split('-').map(Number)
-  const [h, mi] = timePart.split(':').map(Number)
-  // UTC-3 → soma 3h para obter UTC
-  const utc = new Date(Date.UTC(y, mo-1, d, h+3, mi))
-  return utc.toISOString()
-}
+  async function load() {
+    setLoading(true)
+    const since = new Date(nowBrasilia().getTime() - period * 24 * 60 * 60 * 1000).toISOString()
 
-/*function statusLabel(publishedAt: string): { label: string; color: string } {
-  const pub = new Date(publishedAt)
-  const now = nowBrasilia()
-  const expires = new Date(pub.getTime() + 24 * 60 * 60 * 1000)
-  if (now < pub) return { label: 'Agendada', color: 'bg-blue-100 text-blue-700' }
-  if (now > expires) return { label: 'Expirada', color: 'bg-gray-100 text-gray-500' }
-  const diff = expires.getTime() - now.getTime()
-  const h = Math.floor(diff / 3600000)
-  const m = Math.floor((diff % 3600000) / 60000)
-  return { label: `${h}h ${m}m restantes`, color: 'bg-emerald-100 text-emerald-700' }
-}*/
+    // Busca todas as ofertas do período com views e shares
+    const { data: offersData } = await supabase
+      .from('offers')
+      .select('id, name, image_url, price, unit, market_id, published_at')
+      .gte('published_at', since)
+      .order('published_at', { ascending: false })
+
+    const { data: viewsData } = await supabase
+      .from('offer_views')
+      .select('offer_id')
+      .gte('viewed_at', since)
+
+    const { data: sharesData } = await supabase
+      .from('whatsapp_shares')
+      .select('offer_id, quantity')
+      .gte('shared_at', since)
+
+    const offersList = offersData || []
+    const viewsList = viewsData || []
+    const sharesList = sharesData || []
+
+    // Conta views e shares por oferta
+    const viewsCount: Record<string, number> = {}
+    viewsList.forEach((v: any) => {
+      viewsCount[v.offer_id] = (viewsCount[v.offer_id] || 0) + 1
+    })
+
+    const sharesCount: Record<string, number> = {}
+    sharesList.forEach((s: any) => {
+      sharesCount[s.offer_id] = (sharesCount[s.offer_id] || 0) + (s.quantity || 1)
+    })
+
+    // Agrupa por mercado
+    const metricsMap: Record<string, MarketMetrics> = {}
+
+    markets.forEach(m => {
+      metricsMap[m.id] = {
+        market: m,
+        totalViews: 0,
+        totalShares: 0,
+        totalOffers: 0,
+        offers: [],
+      }
+    })
+
+    offersList.forEach((o: any) => {
+      if (!metricsMap[o.market_id]) return
+      const views = viewsCount[o.id] || 0
+      const shares = sharesCount[o.id] || 0
+      metricsMap[o.market_id].totalViews += views
+      metricsMap[o.market_id].totalShares += shares
+      metricsMap[o.market_id].totalOffers += 1
+      metricsMap[o.market_id].offers.push({
+        id: o.id,
+        name: o.name,
+        image_url: o.image_url,
+        price: o.price,
+        unit: o.unit,
+        views,
+        shares,
+        published_at: o.published_at,
+      })
+    })
+
+    setData(Object.values(metricsMap).filter(m => m.totalOffers > 0))
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [period, markets])
+
+  const totalViews = data.reduce((a, m) => a + m.totalViews, 0)
+  const totalShares = data.reduce((a, m) => a + m.totalShares, 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Cabeçalho com período */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold text-gray-900">Métricas de desempenho</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Dados para apresentar aos mercados</p>
+        </div>
+        <div className="flex gap-1">
+          {([7, 14, 30] as const).map(p => (
+            <button key={p} onClick={() => setPeriod(p)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${period === p ? 'bg-emerald-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+              {p}d
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Totais gerais */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+          <Eye size={18} className="text-emerald-500 mx-auto mb-1" />
+          <p className="text-2xl font-bold text-gray-900">{totalViews.toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-gray-400">visualizações</p>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+          <Share2 size={18} className="text-green-500 mx-auto mb-1" />
+          <p className="text-2xl font-bold text-gray-900">{totalShares.toLocaleString('pt-BR')}</p>
+          <p className="text-xs text-gray-400">compartilhamentos</p>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm p-4 text-center">
+          <Store size={18} className="text-blue-500 mx-auto mb-1" />
+          <p className="text-2xl font-bold text-gray-900">{data.length}</p>
+          <p className="text-xs text-gray-400">mercados ativos</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Carregando métricas...</div>
+      ) : data.length === 0 ? (
+        <div className="text-center py-8 text-gray-400 text-sm">Nenhum dado no período selecionado.</div>
+      ) : (
+        <div className="space-y-3">
+          {data
+            .sort((a, b) => b.totalViews - a.totalViews)
+            .map(m => {
+              const isExpanded = expanded === m.market.id
+              return (
+                <div key={m.market.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                  {/* Header do mercado */}
+                  <button
+                    onClick={() => setExpanded(isExpanded ? null : m.market.id)}
+                    className="w-full flex items-center gap-3 p-4 text-left hover:bg-gray-50 transition-colors"
+                  >
+                    <ImgPreview src={m.market.logo_url} name={m.market.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm">{m.market.name}</p>
+                      {m.market.city && <p className="text-xs text-gray-400">{m.market.city}</p>}
+                    </div>
+                    {/* Métricas resumidas */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-900">{m.totalViews}</p>
+                        <p className="text-xs text-gray-400 flex items-center gap-0.5"><Eye size={9} /> views</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-900">{m.totalShares}</p>
+                        <p className="text-xs text-gray-400 flex items-center gap-0.5"><Share2 size={9} /> lista</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-bold text-gray-900">{m.totalOffers}</p>
+                        <p className="text-xs text-gray-400 flex items-center gap-0.5"><Tag size={9} /> ofertas</p>
+                      </div>
+                      {isExpanded ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                    </div>
+                  </button>
+
+                  {/* Detalhes expandidos */}
+                  {isExpanded && (
+                    <div className="border-t border-gray-50 px-4 pb-4">
+                      {/* Card de relatório — para mostrar ao mercado */}
+                      <div className="bg-emerald-50 rounded-xl p-3 my-3">
+                        <p className="text-xs font-semibold text-emerald-800 mb-1">📊 Relatório para o mercado</p>
+                        <p className="text-xs text-emerald-700 leading-relaxed">
+                          Nos últimos <strong>{period} dias</strong>, as ofertas de <strong>{m.market.name}</strong> foram visualizadas <strong>{m.totalViews} vezes</strong> e adicionadas à lista de compras por <strong>{m.totalShares} pessoas</strong>.
+                        </p>
+                      </div>
+
+                      {/* Lista de ofertas com métricas */}
+                      <div className="space-y-2">
+                        {m.offers
+                          .sort((a, b) => b.views - a.views)
+                          .map(o => (
+                            <div key={o.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2.5">
+                              <ImgPreview src={o.image_url} name={o.name} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-gray-800 truncate">{o.name}</p>
+                                <p className="text-xs text-gray-400">
+                                  R$ {Number(o.price).toFixed(2)}/{o.unit} ·{' '}
+                                  {new Date(o.published_at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' })}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3 flex-shrink-0">
+                                <div className="flex items-center gap-1 text-xs text-gray-500">
+                                  <Eye size={11} className="text-emerald-500" />
+                                  <span className="font-semibold">{o.views}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-xs text-gray-500">
+                                  <Share2 size={11} className="text-green-500" />
+                                  <span className="font-semibold">{o.shares}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Formulário de Mercado ─────────────────────────────────────
 
@@ -114,7 +341,6 @@ function OfferForm({ initial, markets, onSave, onCancel }: {
   onSave: (data: Partial<Offer>) => Promise<void>
   onCancel: () => void
 }) {
-  // Default: amanhã às 08:00 horário Brasília
   const defaultDate = () => {
     const d = nowBrasilia()
     d.setDate(d.getDate() + 1)
@@ -188,10 +414,10 @@ function OfferForm({ initial, markets, onSave, onCancel }: {
         </div>
         <div>
           <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1">
-            <Clock size={11} /> Publicar em (horário Brasília) *
+            <Clock size={11} /> Publicar em (Brasília) *
           </label>
           <input className={inp} type="datetime-local" value={publishedLocal} onChange={e => setPublishedLocal(e.target.value)} required />
-          <p className="text-xs text-gray-400 mt-1">A oferta expira automaticamente 24h depois</p>
+          <p className="text-xs text-gray-400 mt-1">Expira automaticamente em 24h</p>
         </div>
         <div className="col-span-2">
           <label className="text-xs font-medium text-gray-500 block mb-1">Observação</label>
@@ -210,7 +436,7 @@ function OfferForm({ initial, markets, onSave, onCancel }: {
   )
 }
 
-// ── AdminPanel ────────────────────────────────────────────────
+// ── AdminPanel principal ──────────────────────────────────────
 
 export function AdminPanel() {
   const [tab, setTab] = useState<Tab>('offers')
@@ -228,7 +454,6 @@ export function AdminPanel() {
 
   async function load() {
     setLoading(true)
-    // Busca últimos 2 dias + agendadas (futuras)
     const since = new Date(nowBrasilia().getTime() - 48 * 60 * 60 * 1000).toISOString()
     const [{ data: m }, { data: o }] = await Promise.all([
       supabase.from('markets').select('*').order('name'),
@@ -275,13 +500,11 @@ export function AdminPanel() {
     if (editingOffer) {
       const { error } = await supabase.from('offers').update(data).eq('id', editingOffer.id)
       if (error) throw error
-      await load()
-      flash('Oferta atualizada!')
+      await load(); flash('Oferta atualizada!')
     } else {
       const { error } = await supabase.from('offers').insert({ ...data, active: true })
       if (error) throw error
-      await load()
-      flash('Oferta agendada!')
+      await load(); flash('Oferta agendada!')
     }
     setShowOfferForm(false); setEditingOffer(null)
   }
@@ -299,8 +522,6 @@ export function AdminPanel() {
   }
 
   const now = nowBrasilia()
-
-  // Agrupa: agendadas, ativas, expiradas
   const scheduled = offers.filter(o => o.published_at && new Date(o.published_at) > now)
   const active = offers.filter(o => {
     if (!o.published_at) return false
@@ -332,8 +553,7 @@ export function AdminPanel() {
               </div>
               <div className="text-right flex-shrink-0">
                 <p className="font-bold text-emerald-600 text-sm">
-                  R$ {Number(offer.price).toFixed(2)}
-                  <span className="text-xs text-gray-400 font-normal">/{offer.unit}</span>
+                  R$ {Number(offer.price).toFixed(2)}<span className="text-xs text-gray-400 font-normal">/{offer.unit}</span>
                 </p>
               </div>
             </div>
@@ -348,7 +568,7 @@ export function AdminPanel() {
             <div className="flex items-center gap-2 mt-2">
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>{status.label}</span>
               <div className="ml-auto flex items-center gap-1">
-                <button onClick={() => toggleOfferActive(offer)} className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title={offer.active ? 'Desativar' : 'Ativar'}>
+                <button onClick={() => toggleOfferActive(offer)} className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
                   <Check size={13} />
                 </button>
                 <button onClick={() => { setEditingOffer(offer); setShowOfferForm(true) }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
@@ -383,17 +603,21 @@ export function AdminPanel() {
           </button>
         </div>
 
+        {/* Tabs */}
         <div className="flex gap-2 mb-5">
           {([
             { key: 'offers', label: 'Ofertas', icon: <Tag size={14} />, count: active.length + scheduled.length },
             { key: 'markets', label: 'Mercados', icon: <Store size={14} />, count: markets.length },
-          ] as { key: Tab; label: string; icon: React.ReactNode; count: number }[]).map(t => (
+            { key: 'metrics', label: 'Métricas', icon: <BarChart2 size={14} />, count: null },
+          ] as { key: Tab; label: string; icon: React.ReactNode; count: number | null }[]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)}
               className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
                 tab === t.key ? 'bg-emerald-500 text-white' : 'bg-white text-gray-600 border border-gray-200'
               }`}>
               {t.icon} {t.label}
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab === t.key ? 'bg-white/20' : 'bg-gray-100'}`}>{t.count}</span>
+              {t.count !== null && (
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${tab === t.key ? 'bg-white/20' : 'bg-gray-100'}`}>{t.count}</span>
+              )}
             </button>
           ))}
         </div>
@@ -421,33 +645,25 @@ export function AdminPanel() {
                   </button>
                 )}
 
-                {/* Agendadas */}
                 {scheduled.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2 px-1">⏰ Agendadas ({scheduled.length})</p>
                     <div className="space-y-2">{scheduled.map(renderOffer)}</div>
                   </div>
                 )}
-
-                {/* Ativas agora */}
                 {active.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-2 px-1">🟢 Ativas agora ({active.length})</p>
                     <div className="space-y-2">{active.map(renderOffer)}</div>
                   </div>
                 )}
-
-                {/* Expiradas recentes */}
                 {expired.length > 0 && (
                   <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Expiradas recentes</p>
                     <div className="space-y-2 opacity-60">{expired.map(renderOffer)}</div>
                   </div>
                 )}
-
-                {offers.length === 0 && (
-                  <p className="text-center text-gray-400 text-sm py-8">Nenhuma oferta. Agende a primeira!</p>
-                )}
+                {offers.length === 0 && <p className="text-center text-gray-400 text-sm py-8">Nenhuma oferta. Agende a primeira!</p>}
               </div>
             )}
 
@@ -472,62 +688,57 @@ export function AdminPanel() {
 
                 {markets.length === 0 ? (
                   <p className="text-center text-gray-400 text-sm py-8">Nenhum mercado cadastrado.</p>
-                ) : (
-                  markets.map(market => {
-                    const marketOffers = active.filter(o => o.market_id === market.id)
-                    const isExpanded = expandedMarket === market.id
-                    return (
-                      <div key={market.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                        <div className="flex items-center gap-3 p-4">
-                          <ImgPreview src={market.logo_url} name={market.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-semibold text-gray-900 text-sm">{market.name}</p>
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${market.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-                                {market.active ? 'Ativo' : 'Inativo'}
-                              </span>
-                            </div>
-                            {market.city && <p className="text-xs text-gray-400 mt-0.5">{market.city}</p>}
-                            <p className="text-xs text-gray-400 mt-0.5">{marketOffers.length} oferta{marketOffers.length !== 1 ? 's' : ''} ativa{marketOffers.length !== 1 ? 's' : ''}</p>
+                ) : markets.map(market => {
+                  const marketOffers = active.filter(o => o.market_id === market.id)
+                  const isExpanded = expandedMarket === market.id
+                  return (
+                    <div key={market.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                      <div className="flex items-center gap-3 p-4">
+                        <ImgPreview src={market.logo_url} name={market.name} className="w-12 h-12 rounded-xl object-cover flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-gray-900 text-sm">{market.name}</p>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${market.active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                              {market.active ? 'Ativo' : 'Inativo'}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button onClick={() => toggleMarketActive(market)} className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
-                              <Check size={13} />
-                            </button>
-                            <button onClick={() => { setEditingMarket(market); setShowMarketForm(true) }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                              <Edit2 size={13} />
-                            </button>
-                            <button onClick={() => deleteMarket(market.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                              <Trash2 size={13} />
-                            </button>
-                            <button onClick={() => setExpandedMarket(isExpanded ? null : market.id)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
-                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                            </button>
-                          </div>
+                          {market.city && <p className="text-xs text-gray-400 mt-0.5">{market.city}</p>}
+                          <p className="text-xs text-gray-400 mt-0.5">{marketOffers.length} oferta{marketOffers.length !== 1 ? 's' : ''} ativa{marketOffers.length !== 1 ? 's' : ''}</p>
                         </div>
-                        {isExpanded && (
-                          <div className="border-t border-gray-50 px-4 pb-3">
-                            {marketOffers.length === 0 ? (
-                              <p className="text-xs text-gray-400 py-3 text-center">Nenhuma oferta ativa.</p>
-                            ) : (
-                              <div className="space-y-2 mt-3">
-                                {marketOffers.map(o => (
-                                  <div key={o.id} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-                                    <ImgPreview src={o.image_url} name={o.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                                    <span className="text-xs text-gray-700 flex-1 truncate">{o.name}</span>
-                                    <span className="text-xs font-semibold text-emerald-600">R$ {Number(o.price).toFixed(2)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button onClick={() => toggleMarketActive(market)} className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"><Check size={13} /></button>
+                          <button onClick={() => { setEditingMarket(market); setShowMarketForm(true) }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={13} /></button>
+                          <button onClick={() => deleteMarket(market.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={13} /></button>
+                          <button onClick={() => setExpandedMarket(isExpanded ? null : market.id)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                        </div>
                       </div>
-                    )
-                  })
-                )}
+                      {isExpanded && (
+                        <div className="border-t border-gray-50 px-4 pb-3">
+                          {marketOffers.length === 0 ? (
+                            <p className="text-xs text-gray-400 py-3 text-center">Nenhuma oferta ativa.</p>
+                          ) : (
+                            <div className="space-y-2 mt-3">
+                              {marketOffers.map(o => (
+                                <div key={o.id} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                                  <ImgPreview src={o.image_url} name={o.name} className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+                                  <span className="text-xs text-gray-700 flex-1 truncate">{o.name}</span>
+                                  <span className="text-xs font-semibold text-emerald-600">R$ {Number(o.price).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )}
+
+            {/* MÉTRICAS */}
+            {tab === 'metrics' && <MetricsPanel markets={markets} />}
           </>
         )}
       </div>
