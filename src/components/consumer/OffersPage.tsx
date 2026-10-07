@@ -147,9 +147,13 @@ export function OffersPage() {
     const msg = `🛒 Minha lista — Oferta do Dia\n\n${lines.join('\n')}\n\n💰 Total: R$ ${total.toFixed(2)}`
     window.open('https://wa.me/?text=' + encodeURIComponent(msg))
     const inserts = cart
-      .map(({ offer, qty }) => ({ market_id: getMarketId(offer), offer_id: offer.id, quantity: qty, unit_price: Number(offer.price) }))
-      .filter(s => s.market_id)
-    if (inserts.length > 0) supabase.from('whatsapp_shares').insert(inserts)
+  .map(({ offer, qty }) => ({
+    market_id: offer.market_id,
+    offer_id: offer.id,
+    quantity: qty,
+    unit_price: Number(offer.price)
+  }))
+  .filter(s => s.market_id)
   }
 
   const filtered = offers.filter(o => {
