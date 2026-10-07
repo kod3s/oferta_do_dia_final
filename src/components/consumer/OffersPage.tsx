@@ -139,80 +139,30 @@ export function OffersPage() {
     await supabase.from('offer_views').insert({ offer_id: offerId })
   }
 
-  function shareWhatsApp() {
-    const lines = cart.map(({ offer, qty }) =>
-      `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
-    )
-    const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-    const msg = `🛒 Minha lista — Oferta do Dia\n\n${lines.join('\n')}\n\n💰 Total: R$ ${total.toFixed(2)}`
-    window.open('https://wa.me/?text=' + encodeURIComponent(msg))
-    const inserts = cart
-  .map(({ offer, qty }) => ({
-    market_id: offer.market_id,
-    offer_id: offer.id,
-    quantity: qty,
-    unit_price: Number(offer.price)
-  }))
-  .filter(s => s.market_id)
+async function shareWhatsApp() {
+  const lines = cart.map(({ offer, qty }) =>
+    `• ${offer.name} (${getMarketName(offer)}) — ${qty}x R$ ${Number(offer.price).toFixed(2)} = R$ ${(Number(offer.price) * qty).toFixed(2)}`
+  )
+  const total = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
+  const msg = `🛒 Minha lista — Oferta do Dia\n\n${lines.join('\n')}\n\n💰 Total: R$ ${total.toFixed(2)}`
+  window.open('https://wa.me/?text=' + encodeURIComponent(msg))
+
+  for (const { offer, qty } of cart) {
+    console.log('tentando inserir:', {
+      market_id: offer.market_id,
+      offer_id: offer.id,
+      quantity: qty,
+      unit_price: Number(offer.price)
+    })
+    const { error } = await supabase.from('whatsapp_shares').insert({
+      market_id: offer.market_id,
+      offer_id: offer.id,
+      quantity: qty,
+      unit_price: Number(offer.price)
+    })
+    console.log('resultado:', error ? error.message : 'ok')
   }
-
-  const filtered = offers.filter(o => {
-    const matchSearch = !search ||
-      o.name.toLowerCase().includes(search.toLowerCase()) ||
-      getMarketName(o).toLowerCase().includes(search.toLowerCase())
-    const matchCat  = category === 'Todos' || o.category === category
-    const matchCity = city === 'Todas' || getMarketCity(o) === city
-    return matchSearch && matchCat && matchCity
-  })
-
-  const totalList = cart.reduce((a, { offer, qty }) => a + Number(offer.price) * qty, 0)
-
-  // ── Lista de compras ─────────────────────────────────────────
-  if (showList) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-lg mx-auto px-4 py-6">
-          <button onClick={() => setShowList(false)} className="text-sm text-gray-500 mb-4 flex items-center gap-1">
-            ← Voltar
-          </button>
-          <h2 className="text-lg font-bold text-gray-900 mb-4">Minha lista de compras</h2>
-          {cart.length === 0 ? (
-            <p className="text-center text-gray-400 py-10 text-sm">Nenhum item na lista.</p>
-          ) : (
-            <>
-              <div className="space-y-2 mb-4">
-                {cart.map(({ offer, qty }) => (
-                  <div key={offer.id} className="bg-white rounded-xl p-4 flex items-center gap-3 shadow-sm">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-gray-900 truncate">{offer.name}</p>
-                      <p className="text-xs text-gray-500">{getMarketName(offer)}</p>
-                      <p className="text-sm text-emerald-600 font-semibold mt-0.5">
-                        R$ {(Number(offer.price) * qty).toFixed(2)}
-                        <span className="text-gray-400 font-normal text-xs ml-1">({qty}x R$ {Number(offer.price).toFixed(2)})</span>
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button onClick={() => setQty(offer.id, qty - 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Minus size={12} /></button>
-                      <span className="text-sm font-semibold w-5 text-center">{qty}</span>
-                      <button onClick={() => setQty(offer.id, qty + 1)} className="w-7 h-7 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Plus size={12} /></button>
-                    </div>
-                    <button onClick={() => toggleCart(offer)} className="text-red-400 hover:text-red-600 p-1"><X size={14} /></button>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center mb-3">
-                <p className="text-sm text-gray-600">Total estimado</p>
-                <p className="text-2xl font-bold text-emerald-600">R$ {totalList.toFixed(2)}</p>
-              </div>
-              <button onClick={shareWhatsApp} className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm transition-colors">
-                Compartilhar no WhatsApp
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    )
-  }
+}
 
   // ── Tela principal ───────────────────────────────────────────
   return (
