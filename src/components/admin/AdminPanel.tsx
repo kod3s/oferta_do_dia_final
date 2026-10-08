@@ -502,9 +502,8 @@ export function AdminPanel() {
       if (error) throw error
       await load(); flash('Oferta atualizada!')
     } else {
-      const { error } = await supabase.from('offers').insert({ ...data, active: true })
-      if (error) throw error
-      await load(); flash('Oferta agendada!')
+     const { markets: _, ...cleanData } = data as any
+     const { error } = await supabase.from('offers').update(cleanData).eq('id', editingOffer.id)
     }
     setShowOfferForm(false); setEditingOffer(null)
   }
