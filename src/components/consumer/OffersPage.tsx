@@ -233,11 +233,7 @@ async function shareWhatsApp() {
                       (isInCart(offer.id) ? 'bg-pink-500 text-white' : 'bg-white/80 text-gray-400')}>
                     <Heart size={14} fill={isInCart(offer.id) ? 'currentColor' : 'none'} />
                   </button>
-                  {offer.published_at && (
-                    <div className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-0.5 rounded-full">
-                      ⏱ {timeLeft(offer.published_at)}
-                    </div>
-                  )}
+
                 </div>
                 <div className="p-3">
                   <p className="font-semibold text-sm text-gray-900 leading-tight line-clamp-2 mb-1">{offer.name}</p>
