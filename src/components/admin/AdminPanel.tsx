@@ -498,7 +498,8 @@ export function AdminPanel() {
 
   async function saveOffer(data: Partial<Offer>) {
     if (editingOffer) {
-      const { error } = await supabase.from('offers').update(data).eq('id', editingOffer.id)
+      const { markets: _m, ...cleanData } = data as any
+      const { error } = await supabase.from('offers').update(cleanData).eq('id', editingOffer.id)
       if (error) throw error
       await load(); flash('Oferta atualizada!')
     } else {
